@@ -296,7 +296,7 @@ class TorchTSNE(TransformerMixin, BaseEstimator):
         p_data = self._scale_affinities(opt_args['args'][0], 1.0 / self.early_exaggeration)
         stage2_diag = {'iteration_times': [], 'median_iteration_time': 0.0, 'stopped_reason': 'skipped'}
         remaining = self.max_iter - self._EXPLORATION_MAX_ITER
-        if it < self._EXPLORATION_MAX_ITER or remaining > 0:
+        if remaining > 0 and it + 1 < self.max_iter:
             opt_args['max_iter'] = self.max_iter
             opt_args['it'] = it + 1
             opt_args['momentum'] = 0.8

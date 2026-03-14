@@ -100,12 +100,22 @@ def _dense_matrix_bytes(n_rows: int, n_cols: int, dtype_bytes: int = FLOAT32_BYT
     return int(n_rows) * int(n_cols) * int(dtype_bytes)
 
 
-def _dense_exact_details(x, *, metric: str, n_components: int) -> tuple[dict[str, int], dict[str, int]]:
+def _dense_input_tensor_bytes(x) -> int:
+    """
+    Estimate the footprint of a dense float32 tensor materialized from the estimator input.
+
+    :param x: Dense estimator input.
+
+    :return: Dense input tensor footprint in bytes.
+    """
+    return _dense_matrix_bytes(*x.shape)
+
+
+def _dense_exact_details(x, *, n_components: int) -> tuple[dict[str, int], dict[str, int]]:
     """
     Estimate the dominant allocation categories for the dense exact backend.
 
     :param x: Input data passed to the estimator.
-    :param metric: Distance metric mode.
     :param n_components: Embedding dimensionality.
 
     :return: Tuple ``(detail_bytes, metadata)``.
@@ -118,20 +128,16 @@ def _dense_exact_details(x, *, metric: str, n_components: int) -> tuple[dict[str
         'objective_workspace_bytes': 4 * _dense_matrix_bytes(n_samples, n_samples),
         # params, update, gains, and gradient.
         'optimizer_state_bytes': 4 * _dense_matrix_bytes(n_samples, n_components),
+        'input_tensor_bytes': _dense_input_tensor_bytes(x),
     }
-    if metric != 'precomputed':
-        details['input_tensor_bytes'] = _dense_matrix_bytes(*x.shape)
-    else:
-        details['input_tensor_bytes'] = _dense_matrix_bytes(*x.shape)
     return details, {}
 
 
-def _fft_dense_details(x, *, metric: str, n_components: int, grid_size: int) -> tuple[dict[str, int], dict[str, int]]:
+def _fft_dense_details(x, *, n_components: int, grid_size: int) -> tuple[dict[str, int], dict[str, int]]:
     """
     Estimate the dominant allocation categories for the dense FFT backend.
 
     :param x: Input data passed to the estimator.
-    :param metric: Distance metric mode.
     :param n_components: Embedding dimensionality.
     :param grid_size: Side length of the FFT grid.
 
@@ -146,11 +152,8 @@ def _fft_dense_details(x, *, metric: str, n_components: int, grid_size: int) -> 
         'objective_workspace_bytes': 5 * _dense_matrix_bytes(n_samples, n_samples),
         'optimizer_state_bytes': 4 * _dense_matrix_bytes(n_samples, n_components),
         'grid_workspace_bytes': 8 * _dense_matrix_bytes(conv_size, conv_size),
+        'input_tensor_bytes': _dense_input_tensor_bytes(x),
     }
-    if metric != 'precomputed':
-        details['input_tensor_bytes'] = _dense_matrix_bytes(*x.shape)
-    else:
-        details['input_tensor_bytes'] = _dense_matrix_bytes(*x.shape)
     return details, {}
 
 
@@ -189,9 +192,9 @@ def _fft_sparse_details(
     }
 
     if metric != 'precomputed':
-        details['input_tensor_bytes'] = _dense_matrix_bytes(*x.shape)
+        details['input_tensor_bytes'] = _dense_input_tensor_bytes(x)
     elif not sp.issparse(x):
-        details['input_tensor_bytes'] = _dense_matrix_bytes(*x.shape)
+        details['input_tensor_bytes'] = _dense_input_tensor_bytes(x)
     else:
         details['input_tensor_bytes'] = 0
     return details, {'affinity_nnz_estimate': affinity_nnz}
@@ -222,10 +225,10 @@ def estimate_tsne_memory(
     """
     if method == 'exact':
         backend = 'torch_exact'
-        details, metadata = _dense_exact_details(x, metric=metric, n_components=n_components)
+        details, metadata = _dense_exact_details(x, n_components=n_components)
     elif method == 'fft' and int(x.shape[0]) <= 256:
         backend = 'torch_fft_dense'
-        details, metadata = _fft_dense_details(x, metric=metric, n_components=n_components, grid_size=grid_size)
+        details, metadata = _fft_dense_details(x, n_components=n_components, grid_size=grid_size)
     elif method == 'fft':
         backend = 'torch_fft'
         details, metadata = _fft_sparse_details(
@@ -277,10 +280,13 @@ def build_memory_error_message(
 
     :return: Human-readable ``MemoryError`` message.
     """
-    suggestions = ["reduce n_samples", "switch to method='fft'"]
+    suggestions = ['reduce n_samples']
+    if method != 'fft' and not estimate.backend.startswith('torch_fft'):
+        suggestions.append("switch to method='fft'")
     if estimate.device == 'cuda':
         suggestions.append("retry on device='cpu'")
-    suggestions.append('use a sparse precomputed graph for large datasets')
+    if method == 'exact' or estimate.backend == 'torch_fft_dense':
+        suggestions.append('use a sparse precomputed graph for large datasets')
     return (
         f"Estimated {estimate.backend} memory requirement for n_samples={n_samples} is "
         f'{format_num_bytes(estimate.required_bytes)}, but only {format_num_bytes(estimate.available_bytes)} '

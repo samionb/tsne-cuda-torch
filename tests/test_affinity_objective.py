@@ -6,6 +6,7 @@ from sklearn.metrics import pairwise_distances
 
 from _helpers import make_blobs_data
 from tsne_torch import exact_kl_divergence_objective, joint_probabilities_from_squared_distances
+from tsne_torch.affinity import build_sparse_affinity_from_knn, build_sparse_affinity_from_precomputed
 
 
 def test_joint_probabilities_match_sklearn():
@@ -36,3 +37,23 @@ def test_exact_gradient_matches_sklearn():
 
     assert_allclose(torch_kl, sklearn_kl, rtol=1e-5, atol=1e-5)
     assert_allclose(torch_grad.cpu().numpy().ravel(), sklearn_grad, rtol=1e-5, atol=1e-5)
+
+
+def test_sparse_affinity_from_knn_squares_non_euclidean_distances():
+    x = make_blobs_data(n_samples=18, n_features=3, centers=3, random_state=9)
+    device = torch.device('cpu')
+    knn_affinity = build_sparse_affinity_from_knn(
+        x,
+        perplexity=4.0,
+        metric='manhattan',
+        metric_params=None,
+        n_jobs=1,
+        device=device,
+    )
+    dense_distances = pairwise_distances(x, metric='manhattan')
+    reference_affinity = build_sparse_affinity_from_precomputed(
+        dense_distances**2,
+        perplexity=4.0,
+        device=device,
+    )
+    assert_allclose(knn_affinity.matrix.toarray(), reference_affinity.matrix.toarray(), atol=1e-6, rtol=1e-6)

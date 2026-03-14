@@ -133,6 +133,23 @@ def test_large_min_grad_norm_stops_early():
     assert model.diagnostics_.timings['stage1']['stopped_reason'] == 'grad_norm'
 
 
+def test_max_iter_equal_to_exploration_stage_skips_stage2_without_overwriting_kl():
+    x = make_blobs_data(n_samples=30, n_features=4, centers=4, random_state=70)
+    model = TorchTSNE(
+        method='exact',
+        init='random',
+        perplexity=8,
+        learning_rate='auto',
+        max_iter=250,
+        random_state=0,
+        device='cpu',
+    )
+    model.fit_transform(x)
+    assert np.isfinite(model.kl_divergence_)
+    assert model.kl_divergence_ < np.finfo(float).max
+    assert model.diagnostics_.timings['stage2']['stopped_reason'] == 'skipped'
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA is not available')
 def test_cuda_execution_path():
     x = make_blobs_data(n_samples=30, n_features=4, centers=4, random_state=8)

@@ -229,8 +229,7 @@ def build_sparse_affinity_from_knn(
     distances_nn = knn.kneighbors_graph(mode='distance')
     distances_nn.sort_indices()
 
-    if metric == 'euclidean':
-        distances_nn.data **= 2
+    distances_nn.data = np.square(np.asarray(distances_nn.data, dtype=np.float64))
 
     distances_data = distances_nn.data.reshape(n_samples, -1)
     probs = binary_search_perplexity_torch(

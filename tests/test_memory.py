@@ -62,3 +62,33 @@ def test_fft_sparse_backend_raises_memory_error_when_budget_is_too_small(monkeyp
 
     with pytest.raises(MemoryError, match='Estimated torch_fft memory requirement'):
         model.fit_transform(graph)
+
+
+def test_memory_error_message_guidance_depends_on_backend():
+    exact_estimate = memory_utils.MemoryEstimate(
+        backend='torch_exact',
+        device='cpu',
+        required_bytes=4096,
+        available_bytes=1024,
+        safe_budget_bytes=900,
+        fits=False,
+        details={},
+        metadata={},
+    )
+    exact_message = memory_utils.build_memory_error_message(exact_estimate, n_samples=128, method='exact')
+    assert "switch to method='fft'" in exact_message
+    assert 'use a sparse precomputed graph for large datasets' in exact_message
+
+    fft_estimate = memory_utils.MemoryEstimate(
+        backend='torch_fft',
+        device='cpu',
+        required_bytes=4096,
+        available_bytes=1024,
+        safe_budget_bytes=900,
+        fits=False,
+        details={},
+        metadata={},
+    )
+    fft_message = memory_utils.build_memory_error_message(fft_estimate, n_samples=128, method='fft')
+    assert "switch to method='fft'" not in fft_message
+    assert 'use a sparse precomputed graph for large datasets' not in fft_message

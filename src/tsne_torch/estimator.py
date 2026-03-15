@@ -355,7 +355,12 @@ class TorchTSNE(TransformerMixin, BaseEstimator):
             distances_tensor = torch.as_tensor(distances, dtype=torch.float32, device=device)
 
         start = perf_counter()
-        p_matrix = joint_probabilities_from_squared_distances(distances_tensor, self.perplexity, self.verbose)
+        p_matrix = joint_probabilities_from_squared_distances(
+            distances_tensor,
+            self.perplexity,
+            self.verbose,
+            timings=timings,
+        )
         timings['affinity_build'] = perf_counter() - start
 
         init = self._initialize_embedding(x, distances_tensor.shape[0], random_state)
@@ -405,7 +410,12 @@ class TorchTSNE(TransformerMixin, BaseEstimator):
                 distances_tensor = torch.as_tensor(distances, dtype=torch.float32, device=device)
 
             start = perf_counter()
-            p_matrix = joint_probabilities_from_squared_distances(distances_tensor, self.perplexity, self.verbose)
+            p_matrix = joint_probabilities_from_squared_distances(
+                distances_tensor,
+                self.perplexity,
+                self.verbose,
+                timings=timings,
+            )
             timings['affinity_build'] = perf_counter() - start
 
             init = self._initialize_embedding(x, distances_tensor.shape[0], random_state)
@@ -431,8 +441,8 @@ class TorchTSNE(TransformerMixin, BaseEstimator):
                     perplexity=self.perplexity,
                     device=device,
                     verbose=self.verbose,
+                    timings=timings,
                 )
-                timings['affinity_build'] = perf_counter() - start
             else:
                 distances = np.asarray(x, dtype=np.float64)
                 start = perf_counter()
@@ -441,8 +451,8 @@ class TorchTSNE(TransformerMixin, BaseEstimator):
                     perplexity=self.perplexity,
                     device=device,
                     verbose=self.verbose,
+                    timings=timings,
                 )
-                timings['affinity_build'] = perf_counter() - start
         else:
             start = perf_counter()
             affinity = build_sparse_affinity_from_knn(
@@ -453,10 +463,17 @@ class TorchTSNE(TransformerMixin, BaseEstimator):
                 n_jobs=self.n_jobs,
                 device=device,
                 verbose=self.verbose,
+                timings=timings,
             )
-            timings['affinity_build'] = perf_counter() - start
-
+        if device.type == 'cuda' and torch.cuda.is_available():
+            torch.cuda.synchronize(device)
+        transfer_start = perf_counter()
         affinity_torch = sparse_affinity_to_torch(affinity, device=device)
+        if device.type == 'cuda' and torch.cuda.is_available():
+            torch.cuda.synchronize(device)
+        timings['host_device_transfer'] = timings.get('host_device_transfer', 0.0) + (perf_counter() - transfer_start)
+        timings['affinity_build'] = perf_counter() - start
+
         init = self._initialize_embedding(x, affinity.matrix.shape[0], random_state)
         params = torch.as_tensor(init, dtype=torch.float32, device=device)
         degrees_of_freedom = float(max(self.n_components - 1, 1))

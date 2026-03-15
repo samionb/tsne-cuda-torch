@@ -11,5 +11,6 @@ build/
 dist/
 *.egg-info/
 benchmarks/results/
+benchmarks/benchmarks/
 data/
 tests/_tmp*.png

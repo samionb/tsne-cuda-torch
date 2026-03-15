@@ -116,6 +116,26 @@ def test_fft_backend_quality_matches_exact():
     assert kl_relative_error <= 0.30
 
 
+def test_fft_backend_reports_affinity_substage_timings():
+    x = make_blobs_data(n_samples=600, n_features=8, centers=6, random_state=61)
+    model = TorchTSNE(
+        method='fft',
+        init='random',
+        perplexity=10,
+        learning_rate='auto',
+        max_iter=250,
+        random_state=0,
+        n_jobs=1,
+        device='cpu',
+    )
+    model.fit_transform(x)
+    timings = model.diagnostics_.timings
+    assert timings['affinity_build'] > 0.0
+    assert timings['knn_build'] > 0.0
+    assert timings['perplexity_search'] > 0.0
+    assert timings['symmetrize'] > 0.0
+
+
 def test_large_min_grad_norm_stops_early():
     x = make_blobs_data(n_samples=30, n_features=4, centers=4, random_state=7)
     model = TorchTSNE(
@@ -165,3 +185,24 @@ def test_cuda_execution_path():
     model.fit_transform(x)
     assert model.diagnostics_.device.startswith('cuda')
     assert model.diagnostics_.timings['peak_cuda_memory'] > 0
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA is not available')
+def test_fft_cuda_sparse_affinity_path_reports_knn_and_transfer_timings():
+    x = make_blobs_data(n_samples=300, n_features=8, centers=6, random_state=62)
+    model = TorchTSNE(
+        method='fft',
+        init='random',
+        perplexity=10,
+        learning_rate='auto',
+        max_iter=250,
+        random_state=0,
+        n_jobs=1,
+        device='cuda',
+    )
+    model.fit_transform(x)
+    timings = model.diagnostics_.timings
+    assert model.diagnostics_.device.startswith('cuda')
+    assert timings['knn_build'] > 0.0
+    assert timings['perplexity_search'] > 0.0
+    assert timings['host_device_transfer'] > 0.0

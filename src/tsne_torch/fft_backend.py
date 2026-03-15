@@ -56,12 +56,31 @@ def _linear_convolution_fft(image: torch.Tensor, kernel: torch.Tensor) -> torch.
     """
     conv_shape = (image.shape[-2] + kernel.shape[-2] - 1, image.shape[-1] + kernel.shape[-1] - 1)
     image_fft = torch.fft.rfftn(image, s=conv_shape)
+    return _linear_convolution_fft_from_image_fft(image_fft, kernel, image_shape=image.shape)
+
+
+def _linear_convolution_fft_from_image_fft(
+    image_fft: torch.Tensor,
+    kernel: torch.Tensor,
+    *,
+    image_shape: tuple[int, int],
+) -> torch.Tensor:
+    """
+    Compute a 2D linear convolution when the image FFT has already been materialized.
+
+    :param image_fft: Frequency-domain representation of the input image.
+    :param kernel: Convolution kernel.
+    :param image_shape: Spatial shape of the original image.
+
+    :return: Convolved tensor cropped back to the input image size.
+    """
+    conv_shape = (image_shape[-2] + kernel.shape[-2] - 1, image_shape[-1] + kernel.shape[-1] - 1)
     kernel_fft = torch.fft.rfftn(kernel, s=conv_shape)
     convolved = torch.fft.irfftn(image_fft * kernel_fft, s=conv_shape)
     start_y = kernel.shape[-2] // 2
     start_x = kernel.shape[-1] // 2
-    end_y = start_y + image.shape[-2]
-    end_x = start_x + image.shape[-1]
+    end_y = start_y + image_shape[-2]
+    end_x = start_x + image_shape[-1]
     return convolved[start_y:end_y, start_x:end_x]
 
 
@@ -121,6 +140,29 @@ def _sample_grid(field: torch.Tensor, coords: torch.Tensor) -> torch.Tensor:
     return sampled.view(-1)
 
 
+def _sample_grid_channels(fields: torch.Tensor, coords: torch.Tensor) -> torch.Tensor:
+    """
+    Sample multiple regular grids at arbitrary coordinates with one bilinear interpolation call.
+
+    :param fields: Grids to sample from with shape ``(n_channels, height, width)``.
+    :param coords: Coordinates expressed in grid space.
+
+    :return: Sampled values with shape ``(n_points, n_channels)``.
+    """
+    grid_size = fields.shape[-1]
+    x = coords[:, 0] / max(grid_size - 1, 1) * 2.0 - 1.0
+    y = coords[:, 1] / max(grid_size - 1, 1) * 2.0 - 1.0
+    sample_grid = torch.stack((x, y), dim=-1).view(1, -1, 1, 2)
+    sampled = func.grid_sample(
+        fields.unsqueeze(0),
+        sample_grid,
+        mode='bilinear',
+        padding_mode='zeros',
+        align_corners=True,
+    )
+    return sampled.squeeze(0).squeeze(-1).transpose(0, 1).contiguous()
+
+
 def approximate_negative_forces_fft(
     y: torch.Tensor,
     *,
@@ -161,13 +203,19 @@ def approximate_negative_forces_fft(
     force_kernel_x = xx * q_kernel.pow(2)
     force_kernel_y = yy * q_kernel.pow(2)
 
-    potential_grid = _linear_convolution_fft(occupancy, q_kernel)
-    force_x_grid = _linear_convolution_fft(occupancy, force_kernel_x)
-    force_y_grid = _linear_convolution_fft(occupancy, force_kernel_y)
+    conv_shape = (occupancy.shape[-2] + q_kernel.shape[-2] - 1, occupancy.shape[-1] + q_kernel.shape[-1] - 1)
+    occupancy_fft = torch.fft.rfftn(occupancy, s=conv_shape)
+    potential_grid = _linear_convolution_fft_from_image_fft(occupancy_fft, q_kernel, image_shape=occupancy.shape)
+    force_x_grid = _linear_convolution_fft_from_image_fft(occupancy_fft, force_kernel_x, image_shape=occupancy.shape)
+    force_y_grid = _linear_convolution_fft_from_image_fft(occupancy_fft, force_kernel_y, image_shape=occupancy.shape)
 
-    sampled_potential = _sample_grid(potential_grid, coords) - 1.0
-    sampled_force_x = _sample_grid(force_x_grid, coords)
-    sampled_force_y = _sample_grid(force_y_grid, coords)
+    sampled_fields = _sample_grid_channels(
+        torch.stack((potential_grid, force_x_grid, force_y_grid), dim=0),
+        coords,
+    )
+    sampled_potential = sampled_fields[:, 0] - 1.0
+    sampled_force_x = sampled_fields[:, 1]
+    sampled_force_y = sampled_fields[:, 2]
 
     neg_force = torch.stack((sampled_force_x, sampled_force_y), dim=1)
     sum_q = sampled_potential.sum().clamp_min(MACHINE_EPSILON)

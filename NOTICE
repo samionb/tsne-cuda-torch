@@ -1,0 +1,21 @@
+TorchTSNE provenance notice
+===========================
+
+This package is a high-performance implementation that mirrors and adapts parts of the
+behavior and implementation strategy of scikit-learn's t-SNE stack for a
+Torch/CUDA-oriented setting.
+
+Upstream reference project:
+
+- scikit-learn
+- https://github.com/scikit-learn/scikit-learn
+- https://scikit-learn.org/
+
+Upstream license:
+
+- BSD 3-Clause License
+
+Attribution preserved here because the implementation includes logic best described
+as a port or adaptation of scikit-learn behavior, validation rules, optimizer
+schedule, and benchmarking comparisons rather than a fully clean-room,
+independently invented implementation.

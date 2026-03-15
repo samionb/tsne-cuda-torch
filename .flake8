@@ -1,0 +1,14 @@
+[flake8]
+max-line-length = 140
+max-cognitive-complexity = 15
+exclude =
+    .git,
+    .idea,
+    .pytest_cache,
+    .pytest_tmp,
+    __pycache__,
+    build,
+    dist,
+    data,
+    benchmarks/results,
+    benchmarks/benchmarks

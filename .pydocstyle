@@ -1,0 +1,3 @@
+[pydocstyle]
+add-ignore = D107
+match-dir = (?!\.git|\.pytest_cache|\.idea|build|dist).*

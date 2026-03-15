@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tsne-cuda-torch"
+version = "0.1.0"
+description = "High-performance, scikit-learn-style t-SNE implementation built on PyTorch and CUDA."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE"}
+authors = [
+  {name = "Samion Buchas"},
+]
+keywords = ["tsne", "cuda", "pytorch", "scikit-learn", "dimensionality-reduction"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: BSD License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "scikit-learn>=1.3",
+  "torch>=2.1",
+]
+
+[project.optional-dependencies]
+bench = [
+  "matplotlib>=3.7",
+  "psutil>=5.9",
+]
+dev = [
+  "matplotlib>=3.7",
+  "psutil>=5.9",
+  "pytest>=7.4",
+  "flake8>=7.0",
+  "flake8-cognitive-complexity>=0.1.0",
+  "pydocstyle>=6.3",
+  "pymarkdownlnt>=0.9.35",
+]
+
+[project.scripts]
+tsne-torch-benchmark = "tsne_torch.benchmarking:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.pytest_tmp/
+.mypy_cache/
+.idea/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+benchmarks/results/
+benchmarks/benchmarks/
+data/
+tests/_tmp*.png

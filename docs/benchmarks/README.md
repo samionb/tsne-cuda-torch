@@ -77,6 +77,8 @@ Important caveat:
   Time spent building dense or sparse affinities.
 - `timings["optimization"]`
   Time spent inside the iterative optimization loop.
+- `timings["knn_build"]`, `timings["perplexity_search"]`, `timings["symmetrize"]`, `timings["host_device_transfer"]`
+  Finer affinity-build buckets used to separate neighbor search, perplexity calibration, sparse symmetrization, and CPU/GPU transfer overhead on the FFT path.
 - `timings["stage1"]` and `timings["stage2"]`
   Early-exaggeration and post-exaggeration timing and stop-reason data.
 - `median_iteration_time`

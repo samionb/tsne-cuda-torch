@@ -83,9 +83,9 @@ Pipeline:
 
 1. Build a sparse affinity graph from k-nearest neighbors or sparse precomputed distances.
 2. Convert the sparse structure into Torch tensors.
-3. Splat the current 2D embedding onto a grid.
-4. Use [`torch.fft`](https://docs.pytorch.org/docs/stable/fft.html) to convolve the grid with kernels that approximate the repulsive field.
-5. Interpolate the field back to point locations.
+3. Splat the current 2D embedding onto a grid with one fused bilinear accumulation pass.
+4. Use [`torch.fft`](https://docs.pytorch.org/docs/stable/fft.html) to convolve the grid with kernels that approximate the repulsive field, reusing the occupancy FFT across the potential and force kernels.
+5. Interpolate the potential and force fields back to point locations in one multi-channel sampling pass.
 6. Combine sparse attractive forces with FFT-approximated repulsive forces.
 7. Optimize with the same sklearn-like schedule used by the exact backend.
 
@@ -158,7 +158,8 @@ Coverage includes:
 - early stopping behavior,
 - CUDA execution coverage,
 - memory fail-fast behavior,
-- chart-generation regression tests.
+- chart-generation regression tests,
+- FFT grid-splat correctness coverage.
 
 Run the suite with:
 

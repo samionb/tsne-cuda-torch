@@ -81,7 +81,7 @@ For large sparse runs, use `method='fft'` with `metric='precomputed'` and pass a
 
 - The front-end estimator mirrors sklearn closely and keeps familiar fitted attributes such as `embedding_`, `kl_divergence_`, `n_iter_`, and `learning_rate_`.
 - The exact backend builds dense affinities in Torch and evaluates the KL objective and gradient manually, without autograd overhead.
-- The FFT backend uses sparse affinities plus `torch.fft` grid convolution to approximate the repulsive field efficiently at large scale.
+- The FFT backend uses sparse affinities plus `torch.fft` grid convolution to approximate the repulsive field efficiently at large scale, with reused occupancy FFTs and batched grid sampling to keep per-iteration overhead down.
 - The optimizer follows sklearn's two-stage schedule with early exaggeration, gains, momentum, and convergence checks.
 - A memory preflight estimates CPU or CUDA budget before the run starts and can fall back from GPU to CPU when `device='auto'`.
 - Unsupported or intentionally unported cases fall back explicitly to sklearn instead of silently changing semantics.

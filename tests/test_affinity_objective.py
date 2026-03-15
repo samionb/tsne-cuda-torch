@@ -7,6 +7,7 @@ from sklearn.metrics import pairwise_distances
 from _helpers import make_blobs_data
 from tsne_torch import exact_kl_divergence_objective, joint_probabilities_from_squared_distances
 from tsne_torch.affinity import build_sparse_affinity_from_knn, build_sparse_affinity_from_precomputed
+from tsne_torch.fft_backend import _splat_points_to_grid
 
 
 def test_joint_probabilities_match_sklearn():
@@ -57,3 +58,39 @@ def test_sparse_affinity_from_knn_squares_non_euclidean_distances():
         device=device,
     )
     assert_allclose(knn_affinity.matrix.toarray(), reference_affinity.matrix.toarray(), atol=1e-6, rtol=1e-6)
+
+
+def test_splat_points_to_grid_matches_four_corner_reference():
+    coords = torch.tensor(
+        [
+            [0.2, 0.3],
+            [1.75, 2.25],
+            [3.95, 3.95],
+            [-0.5, 1.25],
+        ],
+        dtype=torch.float32,
+    )
+    grid_size = 5
+    actual = _splat_points_to_grid(coords, grid_size)
+
+    x = coords[:, 0].clamp(0.0, grid_size - 1.001)
+    y = coords[:, 1].clamp(0.0, grid_size - 1.001)
+    x0 = torch.floor(x).long()
+    y0 = torch.floor(y).long()
+    x1 = (x0 + 1).clamp(max=grid_size - 1)
+    y1 = (y0 + 1).clamp(max=grid_size - 1)
+    wx = x - x0.float()
+    wy = y - y0.float()
+
+    reference = torch.zeros((grid_size, grid_size), dtype=torch.float32)
+    weights = (
+        ((1.0 - wx) * (1.0 - wy), x0, y0),
+        (wx * (1.0 - wy), x1, y0),
+        ((1.0 - wx) * wy, x0, y1),
+        (wx * wy, x1, y1),
+    )
+    for weight, xi, yi in weights:
+        for sample_idx in range(coords.shape[0]):
+            reference[yi[sample_idx], xi[sample_idx]] += weight[sample_idx]
+
+    assert_allclose(actual.cpu().numpy(), reference.cpu().numpy(), atol=1e-7, rtol=1e-7)

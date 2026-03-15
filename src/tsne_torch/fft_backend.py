@@ -103,17 +103,26 @@ def _splat_points_to_grid(coords: torch.Tensor, grid_size: int) -> torch.Tensor:
     wx = x - x0.float()
     wy = y - y0.float()
 
-    weights = [
-        ((1.0 - wx) * (1.0 - wy), x0, y0),
-        (wx * (1.0 - wy), x1, y0),
-        ((1.0 - wx) * wy, x0, y1),
-        (wx * wy, x1, y1),
-    ]
-
     grid = torch.zeros(grid_size * grid_size, dtype=coords.dtype, device=coords.device)
-    for weight, xi, yi in weights:
-        flat_index = yi * grid_size + xi
-        grid.index_add_(0, flat_index, weight)
+    flat_indices = torch.cat(
+        (
+            y0 * grid_size + x0,
+            y0 * grid_size + x1,
+            y1 * grid_size + x0,
+            y1 * grid_size + x1,
+        ),
+        dim=0,
+    )
+    flat_weights = torch.cat(
+        (
+            (1.0 - wx) * (1.0 - wy),
+            wx * (1.0 - wy),
+            (1.0 - wx) * wy,
+            wx * wy,
+        ),
+        dim=0,
+    )
+    grid.index_add_(0, flat_indices, flat_weights)
     return grid.view(grid_size, grid_size)
 
 
@@ -200,8 +209,9 @@ def approximate_negative_forces_fft(
     q_kernel = degrees_of_freedom / (degrees_of_freedom + r2)
     if degrees_of_freedom != 1.0:
         q_kernel = q_kernel.pow(exponent)
-    force_kernel_x = xx * q_kernel.pow(2)
-    force_kernel_y = yy * q_kernel.pow(2)
+    q_kernel_sq = q_kernel * q_kernel
+    force_kernel_x = xx * q_kernel_sq
+    force_kernel_y = yy * q_kernel_sq
 
     conv_shape = (occupancy.shape[-2] + q_kernel.shape[-2] - 1, occupancy.shape[-1] + q_kernel.shape[-1] - 1)
     occupancy_fft = torch.fft.rfftn(occupancy, s=conv_shape)

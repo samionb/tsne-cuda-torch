@@ -81,6 +81,8 @@ Important caveat:
   Finer affinity-build buckets used to separate neighbor search, perplexity calibration, sparse symmetrization, and CPU/GPU transfer overhead on the FFT path.
 - `timings["stage1"]` and `timings["stage2"]`
   Early-exaggeration and post-exaggeration timing and stop-reason data.
+- `stage1.objective_timings_median` and `stage2.objective_timings_median`
+  Sampled median durations for attractive forces, negative-force sub-stages, error evaluation, and gradient finalization on the iterations where the loss is already computed.
 - `median_iteration_time`
   Median steady-state iteration time inside a phase.
 
@@ -126,27 +128,27 @@ Results:
 
 | Samples | Graph NNZ | sklearn Barnes-Hut (s) | tsne-torch FFT CPU (s) | tsne-torch FFT CUDA (s) | CPU Speedup vs sklearn | CUDA Speedup vs sklearn |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `1000` | `48,000` | `0.427` | `2.473` | `0.946` | `0.17x` | `0.45x` |
-| `5000` | `240,000` | `4.111` | `3.667` | `0.535` | `1.12x` | `7.69x` |
-| `10000` | `480,000` | `10.131` | `5.187` | `0.587` | `1.95x` | `17.25x` |
-| `50000` | `2,400,000` | `80.253` | `21.980` | `1.127` | `3.65x` | `71.21x` |
-| `75000` | `3,600,000` | `124.121` | `24.392` | `1.316` | `5.09x` | `94.34x` |
-| `100000` | `4,800,000` | `170.758` | `31.569` | `1.449` | `5.41x` | `117.86x` |
-| `250000` | `12,000,000` | `614.384` | `76.720` | `2.640` | `8.01x` | `232.75x` |
+| `1000` | `48,000` | `0.847` | `4.697` | `0.838` | `0.18x` | `1.01x` |
+| `5000` | `240,000` | `6.310` | `6.947` | `0.587` | `0.91x` | `10.76x` |
+| `10000` | `480,000` | `20.172` | `10.445` | `0.883` | `1.93x` | `22.84x` |
+| `50000` | `2,400,000` | `94.578` | `20.671` | `0.835` | `4.58x` | `113.21x` |
+| `75000` | `3,600,000` | `131.769` | `26.015` | `0.975` | `5.06x` | `135.14x` |
+| `100000` | `4,800,000` | `173.083` | `30.894` | `1.372` | `5.60x` | `126.15x` |
+| `250000` | `12,000,000` | `589.699` | `71.356` | `2.410` | `8.26x` | `244.68x` |
 
 Power-law fit analysis for the post-crossover regime (`n >= 5000`):
 
-- `t_sklearn(n) ~= 8.568e-05 * n^1.266`
-- `t_fft_cpu(n) ~= 4.500e-03 * n^0.776`
-- `t_fft_cuda(n) ~= 1.589e-02 * n^0.399`
-- `S_fft_cpu(n) ~= 1.904e-02 * n^0.490`
-- `S_fft_cuda(n) ~= 5.391e-03 * n^0.867`
+- `t_sklearn(n) ~= 6.572e-04 * n^1.095`
+- `t_fft_cpu(n) ~= 6.064e-02 * n^0.551`
+- `t_fft_cuda(n) ~= 5.040e-02 * n^0.287`
+- `S_fft_cpu(n) ~= 1.084e-02 * n^0.544`
+- `S_fft_cuda(n) ~= 1.304e-02 * n^0.809`
 
 Headline observations:
 
-- sklearn Barnes-Hut is still fastest at `1000` samples; the CUDA FFT path overtakes it by `5000` samples.
+- At `1000` samples the CUDA FFT path is effectively tied with sklearn Barnes-Hut, and by `5000` samples it is clearly ahead.
 - The CUDA runtime slope is materially smaller than sklearn's, so the speedup continues to widen with sample count.
-- `tsne_torch_fft_cuda` reaches `232.75x` measured speedup at `250000` samples.
+- `tsne_torch_fft_cuda` reaches `244.68x` measured speedup at `250000` samples.
 
 ## MNIST 60k
 
@@ -172,14 +174,14 @@ Results:
 
 | Baseline | Median Runtime (s) | Trustworthiness | k-NN Overlap | KL Divergence | Peak GPU Memory |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `sklearn_barnes_hut` | `91.224` | `0.928501` | `0.244850` | `overflow` | `0 MB` |
-| `tsne_torch_fft_cpu` | `14.939` | `0.931572` | `0.244050` | `overflow` | `0 MB` |
-| `tsne_torch_fft_cuda` | `1.056` | `0.931414` | `0.244550` | `overflow` | `211.7 MB` |
+| `sklearn_barnes_hut` | `144.074` | `0.928501` | `0.244850` | `overflow` | `0 MB` |
+| `tsne_torch_fft_cpu` | `21.099` | `0.931487` | `0.244850` | `102.975403` | `0 MB` |
+| `tsne_torch_fft_cuda` | `1.287` | `0.931509` | `0.243250` | `102.976112` | `211.7 MB` |
 
 Headline observations:
 
-- `tsne_torch_fft_cuda` is `86.37x` faster than sklearn Barnes-Hut on the shared graph.
-- `tsne_torch_fft_cpu` is `6.11x` faster than sklearn Barnes-Hut.
+- `tsne_torch_fft_cuda` is `111.93x` faster than sklearn Barnes-Hut on the shared graph.
+- `tsne_torch_fft_cpu` is `6.83x` faster than sklearn Barnes-Hut.
 - Quality stays tightly clustered across the three runs.
 - The scatterplots show visually consistent digit clusters across methods after independent embedding normalization for plotting.
 
@@ -200,16 +202,16 @@ Results:
 
 | Baseline | Median Runtime (s) | Trustworthiness | k-NN Overlap | KL Divergence | Peak GPU Memory |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `sklearn_exact` | `18.099` | `0.991370` | `0.237050` | `0.986602` | `0 MB` |
-| `sklearn_barnes_hut` | `1.519` | `0.991340` | `0.235650` | `0.985958` | `0 MB` |
-| `tsne_torch_exact_cpu` | `3.537` | `0.991196` | `0.232150` | `0.986734` | `0 MB` |
-| `tsne_torch_exact_cuda` | `0.192` | `0.991256` | `0.233350` | `0.987457` | `160.2 MB` |
-| `tsne_torch_fft_cuda` | `0.637` | `0.991190` | `0.233200` | `0.980551` | `36.0 MB` |
+| `sklearn_exact` | `26.741` | `0.991370` | `0.237050` | `0.986602` | `0 MB` |
+| `sklearn_barnes_hut` | `2.039` | `0.991340` | `0.235650` | `0.985958` | `0 MB` |
+| `tsne_torch_exact_cpu` | `5.332` | `0.991196` | `0.232150` | `0.986734` | `0 MB` |
+| `tsne_torch_exact_cuda` | `0.250` | `0.991256` | `0.233350` | `0.987457` | `160.2 MB` |
+| `tsne_torch_fft_cuda` | `0.715` | `0.991202` | `0.232400` | `0.981277` | `37.6 MB` |
 
 Headline observations:
 
-- `tsne_torch_exact_cuda` is about `94.4x` faster than sklearn exact.
-- `tsne_torch_fft_cuda` is about `28.4x` faster than sklearn exact.
+- `tsne_torch_exact_cuda` is about `106.8x` faster than sklearn exact.
+- `tsne_torch_fft_cuda` is about `37.4x` faster than sklearn exact.
 - Quality remains close across methods on trustworthiness and neighborhood retention.
 
 ## Large Sparse
@@ -229,15 +231,15 @@ Results:
 
 | Baseline | Median Runtime (s) | Trustworthiness | k-NN Overlap | KL Divergence | Peak GPU Memory |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `sklearn_barnes_hut` | `193.786` | `0.996057` | `0.313150` | `overflow` | `0 MB` |
-| `tsne_torch_fft_cpu` | `31.487` | `0.996087` | `0.315750` | `overflow` | `0 MB` |
-| `tsne_torch_fft_cuda` | `2.376` | `0.996072` | `0.316300` | `overflow` | `480.2 MB` |
+| `sklearn_barnes_hut` | `162.981` | `0.996057` | `0.313150` | `overflow` | `0 MB` |
+| `tsne_torch_fft_cpu` | `29.413` | `0.996094` | `0.315350` | `90.401367` | `0 MB` |
+| `tsne_torch_fft_cuda` | `1.638` | `0.996086` | `0.320200` | `90.390915` | `479.3 MB` |
 
 Headline observations:
 
-- `tsne_torch_fft_cuda` is about `81.6x` faster than sklearn Barnes-Hut.
-- `tsne_torch_fft_cpu` is about `6.2x` faster than sklearn Barnes-Hut.
-- At this scale, trustworthiness and k-NN overlap are more reliable than `kl_divergence`.
+- `tsne_torch_fft_cuda` is about `99.5x` faster than sklearn Barnes-Hut.
+- `tsne_torch_fft_cpu` is about `5.5x` faster than sklearn Barnes-Hut.
+- sklearn still overflows `kl_divergence` here, while the `tsne-torch` FFT runs remained finite on this configuration.
 
 ## Largest Shared Run
 
@@ -256,14 +258,14 @@ Results:
 
 | Baseline | Median Runtime (s) | Trustworthiness | k-NN Overlap | KL Divergence | Peak GPU Memory |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `sklearn_barnes_hut` | `3891.127` | `0.999542` | `0.684350` | `overflow` | `0 MB` |
-| `tsne_torch_fft_cpu` | `297.077` | `0.999546` | `0.681350` | `overflow` | `0 MB` |
-| `tsne_torch_fft_cuda` | `10.204` | `0.999546` | `0.682800` | `overflow` | `4787.3 MB` |
+| `sklearn_barnes_hut` | `3797.394` | `0.999542` | `0.684350` | `overflow` | `0 MB` |
+| `tsne_torch_fft_cpu` | `298.184` | `0.999545` | `0.684100` | `115.955078` | `0 MB` |
+| `tsne_torch_fft_cuda` | `9.732` | `0.999544` | `0.682400` | `115.956100` | `4795.4 MB` |
 
 Headline observations:
 
 - `1000000` samples is the largest size validated here for both sklearn and TorchTSNE.
-- `tsne_torch_fft_cuda` is about `381x` faster than sklearn Barnes-Hut.
+- `tsne_torch_fft_cuda` is about `390.2x` faster than sklearn Barnes-Hut.
 - The shared million-sample run is feasible on this workstation only because the benchmark uses a sparse precomputed graph rather than a dense feature matrix.
 
 ## Artifact Index

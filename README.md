@@ -112,9 +112,9 @@ For medium dense inputs, the exact CUDA backend is the clearest apples-to-apples
 
 | Scenario | Main takeaway |
 | --- | --- |
-| Scaling sweep (`1k -> 250k`) | Post-crossover fits show sklearn runtime growing roughly like `n^1.266`, while `tsne-torch` FFT CUDA grows closer to `n^0.399`; measured CUDA speedup reaches `232.75x` at `250000` samples. |
-| `MNIST 60k` | `tsne_torch_fft_cuda` is `86.37x` faster than sklearn Barnes-Hut on the shared sparse graph, with comparable neighborhood-preservation quality. |
-| `2048 x 512` medium dense | `tsne_torch_exact_cuda` is about `94.4x` faster than sklearn exact while staying close on trustworthiness and k-NN overlap. |
+| Scaling sweep (`1k -> 250k`) | Post-crossover fits show sklearn runtime growing roughly like `n^1.095`, while `tsne-torch` FFT CUDA grows closer to `n^0.287`; measured CUDA speedup reaches `244.68x` at `250000` samples. |
+| `MNIST 60k` | `tsne_torch_fft_cuda` is `111.93x` faster than sklearn Barnes-Hut on the shared sparse graph, with comparable neighborhood-preservation quality. |
+| `2048 x 512` medium dense | `tsne_torch_exact_cuda` is about `106.80x` faster than sklearn exact while staying close on trustworthiness and k-NN overlap. |
 
 ## Docs
 

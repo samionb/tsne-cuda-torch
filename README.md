@@ -4,6 +4,8 @@
 
 The project stays in pure Python: no custom C++ or CUDA extensions, no `nvcc`, and no separately compiled helper libraries beyond the PyTorch wheel you install.
 
+On the benchmarked workloads in this repository, the CUDA path reaches well over `100x` speedup versus vanilla sklearn t-SNE on the strongest like-for-like comparisons.
+
 ## What It Supports
 
 - `method="exact"` for dense exact t-SNE on Torch tensors

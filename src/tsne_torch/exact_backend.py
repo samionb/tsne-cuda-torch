@@ -15,6 +15,7 @@ def exact_kl_divergence_objective(
     *,
     skip_num_points: int = 0,
     compute_error: bool = True,
+    timings: dict | None = None,
 ):
     """
     Evaluate the exact t-SNE KL objective and gradient on Torch tensors.
@@ -26,9 +27,11 @@ def exact_kl_divergence_objective(
     :param degrees_of_freedom: Student-t degrees of freedom for the embedding distribution.
     :param skip_num_points: Number of leading points whose gradients should be forced to zero.
     :param compute_error: Whether to compute the KL divergence value in addition to the gradient.
+    :param timings: Optional objective timing dictionary. Unused for the exact backend.
 
     :return: Tuple ``(kl_divergence, gradient)``.
     """
+    _ = timings
     y = params
     sum_y = (y * y).sum(dim=1, keepdim=True)
     dist = sum_y + sum_y.T - 2.0 * (y @ y.T)

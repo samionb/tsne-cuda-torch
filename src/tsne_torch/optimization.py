@@ -8,6 +8,31 @@ import numpy as np
 import torch
 
 
+def _summarize_objective_timing_samples(samples: list[dict]) -> dict:
+    """
+    Collapse per-iteration objective timing samples into total and median summaries.
+
+    :param samples: Sampled objective timing dictionaries.
+
+    :return: Summary dictionary for gradient-descent diagnostics.
+    """
+    if not samples:
+        return {}
+
+    keys = sorted({key for sample in samples for key in sample})
+    totals = {}
+    medians = {}
+    for key in keys:
+        values = [float(sample.get(key, 0.0)) for sample in samples]
+        totals[key] = float(sum(values))
+        medians[key] = float(np.median(values))
+    return {
+        'objective_timing_samples': len(samples),
+        'objective_timings_total': totals,
+        'objective_timings_median': medians,
+    }
+
+
 def gradient_descent(
     objective,
     p0: torch.Tensor,
@@ -57,6 +82,7 @@ def gradient_descent(
     best_error = np.finfo(float).max
     best_iter = i = it
     timings = []
+    objective_timing_samples = []
     stopped_reason = 'max_iter'
     tic = perf_counter()
 
@@ -64,8 +90,15 @@ def gradient_descent(
         check_convergence = (i + 1) % n_iter_check == 0
         objective_kwargs = dict(kwargs)
         objective_kwargs['compute_error'] = check_convergence or i == max_iter - 1
+        objective_timing = None
+        if objective_kwargs['compute_error']:
+            objective_timing = {}
+            objective_kwargs['timings'] = objective_timing
 
         error, grad = objective(p, *args, **objective_kwargs)
+
+        if objective_timing:
+            objective_timing_samples.append(objective_timing)
 
         inc = update * grad < 0.0
         gains = torch.where(inc, gains + 0.2, gains * 0.8)
@@ -113,4 +146,5 @@ def gradient_descent(
         'median_iteration_time': float(np.median(timings)) if timings else 0.0,
         'stopped_reason': stopped_reason,
     }
+    diagnostics.update(_summarize_objective_timing_samples(objective_timing_samples))
     return p, float(error), i, diagnostics

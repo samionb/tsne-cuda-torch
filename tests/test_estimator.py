@@ -136,6 +136,28 @@ def test_fft_backend_reports_affinity_substage_timings():
     assert timings['symmetrize'] > 0.0
 
 
+def test_fft_backend_reports_optimization_substage_timings():
+    x = make_blobs_data(n_samples=600, n_features=8, centers=6, random_state=63)
+    model = TorchTSNE(
+        method='fft',
+        init='random',
+        perplexity=10,
+        learning_rate='auto',
+        max_iter=250,
+        random_state=0,
+        n_jobs=1,
+        device='cpu',
+    )
+    model.fit_transform(x)
+    stage1 = model.diagnostics_.timings['stage1']
+    assert stage1['objective_timing_samples'] > 0
+    objective_timings = stage1['objective_timings_median']
+    assert objective_timings['attractive_force'] > 0.0
+    assert objective_timings['negative_force_total'] > 0.0
+    assert objective_timings['negative_force_fft_convolution'] > 0.0
+    assert objective_timings['gradient_finalize'] > 0.0
+
+
 def test_large_min_grad_norm_stops_early():
     x = make_blobs_data(n_samples=30, n_features=4, centers=4, random_state=7)
     model = TorchTSNE(

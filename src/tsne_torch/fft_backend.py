@@ -284,7 +284,8 @@ def approximate_negative_forces_fft(
     _timed_stop(stage_start, device, timings, 'negative_force_grid_sample')
 
     stage_start = _timed_start(device, timings)
-    sum_q = (sampled_fields[:, 0].sum() - float(y.shape[0])).clamp_min(MACHINE_EPSILON)
+    summed_potential = sampled_fields[:, 0].sum() - float(y.shape[0])
+    sum_q = summed_potential.clamp_min(MACHINE_EPSILON)
     neg_force = sampled_fields[:, 1:3].contiguous()
     _timed_stop(stage_start, device, timings, 'negative_force_combine')
     _timed_stop(total_start, device, timings, 'negative_force_total')

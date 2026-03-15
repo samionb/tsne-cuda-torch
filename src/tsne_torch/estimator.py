@@ -378,7 +378,7 @@ class TorchTSNE(TransformerMixin, BaseEstimator):
         timings['optimization'] = perf_counter() - start
         return params, kl_divergence, it, 'torch_exact', timings, stage1, stage2
 
-    def _run_fft_backend(self, x, *, random_state, device: torch.device):
+    def _run_fft_backend(self, x, *, random_state, device: torch.device):  # noqa: CCR001
         """
         Execute the FFT-based approximate backend.
 
@@ -532,7 +532,11 @@ class TorchTSNE(TransformerMixin, BaseEstimator):
         timings['total'] = perf_counter() - total_start
         timings['stage1'] = stage1
         timings['stage2'] = stage2
-        timings['peak_cuda_memory'] = int(torch.cuda.max_memory_allocated(device)) if device.type == 'cuda' and torch.cuda.is_available() else 0
+        timings['peak_cuda_memory'] = (
+            int(torch.cuda.max_memory_allocated(device))
+            if device.type == 'cuda' and torch.cuda.is_available()
+            else 0
+        )
         self.diagnostics_ = FitDiagnostics(
             backend=backend_name,
             timings=timings,

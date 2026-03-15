@@ -445,7 +445,7 @@ def build_sparse_affinity_from_precomputed(
     n_samples = distances.shape[0]
     n_neighbors = min(n_samples - 1, int(3.0 * perplexity + 1))
     start = _timed_start(None)
-    order = np.argsort(distances, axis=1)[:, 1 : n_neighbors + 1]
+    order = np.argsort(distances, axis=1)[:, 1: n_neighbors + 1]
     _add_timing(timings, 'knn_build', _timed_stop(start, None))
     sorted_distances = np.take_along_axis(distances, order, axis=1)
     sorted_distances_tensor = _to_torch_with_optional_transfer_timing(sorted_distances, device=device, timings=timings)

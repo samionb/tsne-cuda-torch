@@ -12,17 +12,17 @@ from time import perf_counter
 
 os.environ.setdefault('LOKY_MAX_CPU_COUNT', '1')
 
-import numpy as np
-import scipy.sparse as sp
-from scipy.sparse import csr_array
-import torch
-from sklearn.decomposition import PCA
-from sklearn.datasets import load_digits, make_blobs
-from sklearn.manifold import TSNE, trustworthiness
+import numpy as np  # noqa: E402
+import scipy.sparse as sp  # noqa: E402
+from scipy.sparse import csr_array  # noqa: E402
+import torch  # noqa: E402
+from sklearn.decomposition import PCA  # noqa: E402
+from sklearn.datasets import load_digits, make_blobs  # noqa: E402
+from sklearn.manifold import TSNE, trustworthiness  # noqa: E402
 
-from .diagnostics import knn_overlap, library_versions
-from .estimator import TorchTSNE
-from .memory import format_num_bytes
+from .diagnostics import knn_overlap, library_versions  # noqa: E402
+from .estimator import TorchTSNE  # noqa: E402
+from .memory import format_num_bytes  # noqa: E402
 
 LOGGER = logging.getLogger('tsne_torch.benchmarking')
 
@@ -602,7 +602,12 @@ def save_embedding_comparison_chart(
     return output_path
 
 
-def save_scaling_sweep_chart(name: str, summary_rows: list[dict], output_path: Path, analysis: dict | None = None):
+def save_scaling_sweep_chart(  # noqa: CCR001
+    name: str,
+    summary_rows: list[dict],
+    output_path: Path,
+    analysis: dict | None = None,
+):
     """
     Render and save a log-scale scaling chart across multiple dataset sizes.
 
@@ -1004,7 +1009,7 @@ def build_cluster_sampled_distance_graph(
             raise ValueError(f'Cluster {label} has only {len(members)} members, need more than {n_neighbors}')
 
         for start in range(0, len(members), batch_size):
-            batch = members[start : start + batch_size]
+            batch = members[start: start + batch_size]
             self_pos = np.searchsorted(members, batch)
             sampled_pos = rng.integers(0, len(members) - 1, size=(len(batch), n_neighbors), dtype=np.int64)
             sampled_pos += sampled_pos >= self_pos[:, None]
@@ -1013,7 +1018,8 @@ def build_cluster_sampled_distance_graph(
             diff = x[batch][:, None, :] - x[neighbors]
             distances = np.einsum('bij,bij->bi', diff, diff, optimize=True).astype(np.float32, copy=False)
 
-            flat_rows = (batch[:, None] * n_neighbors + column_offsets).ravel()
+            row_offsets = batch[:, None] * n_neighbors
+            flat_rows = (row_offsets + column_offsets).ravel()
             indices[flat_rows] = neighbors.ravel()
             data[flat_rows] = distances.ravel()
 
@@ -1060,7 +1066,7 @@ def build_synthetic_cluster_graph(
             raise ValueError(f'Cluster {label} has only {len(members)} members, need more than {n_neighbors}')
 
         for start in range(0, len(members), batch_size):
-            batch = members[start : start + batch_size]
+            batch = members[start: start + batch_size]
             self_pos = np.arange(start, start + len(batch), dtype=np.int64)
             sampled_pos = rng.integers(0, len(members) - 1, size=(len(batch), n_neighbors), dtype=np.int64)
             sampled_pos += sampled_pos >= self_pos[:, None]
@@ -1071,7 +1077,8 @@ def build_synthetic_cluster_graph(
                 copy=False,
             )
 
-            flat_rows = (batch[:, None] * n_neighbors + column_offsets).ravel()
+            row_offsets = batch[:, None] * n_neighbors
+            flat_rows = (row_offsets + column_offsets).ravel()
             indices[flat_rows] = neighbors.ravel()
             data[flat_rows] = distances.ravel()
 
@@ -1135,10 +1142,12 @@ def load_torchvision_training_data(dataset_name: str, data_root: Path, *, downlo
 
     dataset = dataset_class(root=str(data_root), train=True, download=download)
     if dataset_name == 'mnist':
-        images = dataset.data.numpy().reshape(len(dataset), -1).astype(np.float32) / 255.0
+        images = dataset.data.numpy().reshape(len(dataset), -1).astype(np.float32)
+        images /= 255.0
         labels = dataset.targets.numpy().astype(np.int64)
     else:
-        images = np.asarray(dataset.data, dtype=np.float32).reshape(len(dataset), -1) / 255.0
+        images = np.asarray(dataset.data, dtype=np.float32).reshape(len(dataset), -1)
+        images /= 255.0
         labels = np.asarray(dataset.targets, dtype=np.int64)
     return images, labels
 
@@ -1338,7 +1347,7 @@ def load_or_build_cifar100_sparse_graph(*, random_state: int, dataset_build_devi
     )
 
 
-def build_datasets(
+def build_datasets(  # noqa: CCR001
     random_state: int,
     selected: list[str] | None = None,
     *,
@@ -1662,7 +1671,7 @@ def build_baselines(device: str, profile: dict):
     return baselines
 
 
-def benchmark_dataset(name, profile: dict, repeats: int, device: str):
+def benchmark_dataset(name, profile: dict, repeats: int, device: str):  # noqa: CCR001
     """
     Benchmark all supported baselines for a single dataset profile.
 

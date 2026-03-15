@@ -33,7 +33,7 @@ def _summarize_objective_timing_samples(samples: list[dict]) -> dict:
     }
 
 
-def gradient_descent(
+def gradient_descent(  # noqa: CCR001
     objective,
     p0: torch.Tensor,
     *,

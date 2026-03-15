@@ -12,6 +12,8 @@ The main [README](../../README.md) keeps only the high-signal landing-page highl
 - [Metrics](#metrics)
 - [Scaling Sweep](#scaling-sweep)
 - [MNIST 60k](#mnist-60k)
+- [CIFAR-10 50k](#cifar-10-50k)
+- [CIFAR-100 50k](#cifar-100-50k)
 - [Medium Dense](#medium-dense)
 - [Large Sparse](#large-sparse)
 - [Largest Shared Run](#largest-shared-run)
@@ -185,6 +187,76 @@ Headline observations:
 - Quality stays tightly clustered across the three runs.
 - The scatterplots show visually consistent digit clusters across methods after independent embedding normalization for plotting.
 
+## CIFAR-10 50k
+
+Artifacts:
+
+- Runtime chart: [`benchmark_cifar10_50k.png`](./benchmark_cifar10_50k.png)
+- Embedding chart: [`benchmark_cifar10_50k_embeddings.png`](./benchmark_cifar10_50k_embeddings.png)
+- JSON: [`benchmark_cifar10_50k.json`](./benchmark_cifar10_50k.json)
+
+Methodology:
+
+- dataset: `torchvision.datasets.CIFAR10(train=True)` with `50,000` training samples
+- preprocessing: flattened RGB tensors normalized to `[0, 1]`, then reduced with `PCA(50)` only for one-time graph construction
+- shared benchmark input: exact sparse `48`-NN squared-distance graph built once from the PCA-reduced features
+- compared baselines: `sklearn_barnes_hut`, `tsne_torch_fft_cpu`, `tsne_torch_fft_cuda`
+- benchmark mode: `--device cuda --repeats 1`
+
+![TorchTSNE CIFAR-10 runtime chart](./benchmark_cifar10_50k.png)
+
+![TorchTSNE CIFAR-10 embedding comparison](./benchmark_cifar10_50k_embeddings.png)
+
+Results:
+
+| Baseline | Median Runtime (s) | Trustworthiness | k-NN Overlap | KL Divergence | Peak GPU Memory |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `sklearn_barnes_hut` | `134.721` | `0.812823` | `0.063900` | `overflow` | `0 MB` |
+| `tsne_torch_fft_cpu` | `15.211` | `0.811623` | `0.067300` | `114.248299` | `0 MB` |
+| `tsne_torch_fft_cuda` | `0.935` | `0.811676` | `0.067150` | `114.248337` | `225.9 MB` |
+
+Headline observations:
+
+- `tsne_torch_fft_cuda` is `144.16x` faster than sklearn Barnes-Hut on the shared graph.
+- `tsne_torch_fft_cpu` is `8.86x` faster than sklearn Barnes-Hut.
+- Trustworthiness stays close across methods, while the `tsne-torch` FFT runs retain slightly higher k-NN overlap on this configuration.
+- The embedding comparison preserves the coarse class families without requiring any custom CUDA extension build.
+
+## CIFAR-100 50k
+
+Artifacts:
+
+- Runtime chart: [`benchmark_cifar100_50k.png`](./benchmark_cifar100_50k.png)
+- Embedding chart: [`benchmark_cifar100_50k_embeddings.png`](./benchmark_cifar100_50k_embeddings.png)
+- JSON: [`benchmark_cifar100_50k.json`](./benchmark_cifar100_50k.json)
+
+Methodology:
+
+- dataset: `torchvision.datasets.CIFAR100(train=True)` with `50,000` training samples
+- preprocessing: flattened RGB tensors normalized to `[0, 1]`, then reduced with `PCA(50)` only for one-time graph construction
+- shared benchmark input: exact sparse `48`-NN squared-distance graph built once from the PCA-reduced features
+- compared baselines: `sklearn_barnes_hut`, `tsne_torch_fft_cpu`, `tsne_torch_fft_cuda`
+- benchmark mode: `--device cuda --repeats 1`
+
+![TorchTSNE CIFAR-100 runtime chart](./benchmark_cifar100_50k.png)
+
+![TorchTSNE CIFAR-100 embedding comparison](./benchmark_cifar100_50k_embeddings.png)
+
+Results:
+
+| Baseline | Median Runtime (s) | Trustworthiness | k-NN Overlap | KL Divergence | Peak GPU Memory |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `sklearn_barnes_hut` | `109.722` | `0.817647` | `0.070900` | `overflow` | `0 MB` |
+| `tsne_torch_fft_cpu` | `15.096` | `0.816699` | `0.069900` | `113.865616` | `0 MB` |
+| `tsne_torch_fft_cuda` | `0.985` | `0.816667` | `0.070300` | `113.863251` | `222.8 MB` |
+
+Headline observations:
+
+- `tsne_torch_fft_cuda` is `111.40x` faster than sklearn Barnes-Hut on the shared graph.
+- `tsne_torch_fft_cpu` is `7.27x` faster than sklearn Barnes-Hut.
+- Quality stays tightly clustered, and the `tsne-torch` FFT runs remained numerically finite while sklearn still overflowed `kl_divergence`.
+- The embedding figure omits the full legend intentionally because `100` fine labels are too dense to show cleanly in the margin.
+
 ## Medium Dense
 
 Artifacts:
@@ -277,6 +349,12 @@ Headline observations:
 | [`benchmark_mnist_60k.png`](./benchmark_mnist_60k.png) | `MNIST 60k` runtime / quality / memory comparison |
 | [`benchmark_mnist_60k_embeddings.png`](./benchmark_mnist_60k_embeddings.png) | `MNIST 60k` side-by-side 2D embedding scatterplots |
 | [`benchmark_mnist_60k.json`](./benchmark_mnist_60k.json) | `MNIST 60k` raw results |
+| [`benchmark_cifar10_50k.png`](./benchmark_cifar10_50k.png) | `CIFAR-10 50k` runtime / quality / memory comparison |
+| [`benchmark_cifar10_50k_embeddings.png`](./benchmark_cifar10_50k_embeddings.png) | `CIFAR-10 50k` side-by-side 2D embedding scatterplots |
+| [`benchmark_cifar10_50k.json`](./benchmark_cifar10_50k.json) | `CIFAR-10 50k` raw results |
+| [`benchmark_cifar100_50k.png`](./benchmark_cifar100_50k.png) | `CIFAR-100 50k` runtime / quality / memory comparison |
+| [`benchmark_cifar100_50k_embeddings.png`](./benchmark_cifar100_50k_embeddings.png) | `CIFAR-100 50k` side-by-side 2D embedding scatterplots |
+| [`benchmark_cifar100_50k.json`](./benchmark_cifar100_50k.json) | `CIFAR-100 50k` raw results |
 | [`benchmark_memory_smoke.png`](./benchmark_memory_smoke.png) | Medium dense comparison figure |
 | [`benchmark_memory_smoke.json`](./benchmark_memory_smoke.json) | Medium dense raw results |
 | [`benchmark_100k_cuda.png`](./benchmark_100k_cuda.png) | `100000 x 512` sparse benchmark figure |

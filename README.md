@@ -31,7 +31,7 @@ Optional dependencies:
 
 - `matplotlib` for benchmark figures
 - `psutil` for memory-budget estimation
-- `torchvision` for the optional `MNIST 60k` benchmark
+- `torchvision` for the optional `MNIST` and `CIFAR` image benchmarks
 
 Compatibility:
 
@@ -53,7 +53,7 @@ For benchmark-only usage:
 pip install -e .[bench]
 ```
 
-If you want to run the optional `MNIST 60k` benchmark, install a matching `torchvision` build for your selected `torch` wheel.
+If you want to run the optional `MNIST` or `CIFAR` benchmarks, install a matching `torchvision` build for your selected `torch` wheel.
 
 ## Usage
 
@@ -88,7 +88,7 @@ For large sparse runs, use `method='fft'` with `metric='precomputed'` and pass a
 
 ## Benchmark Highlights
 
-The full benchmark report, methodology, hardware details, full tables, and artifact index live in [docs/benchmarks/README.md](./docs/benchmarks/README.md). The figures below are the three main anchor results.
+The full benchmark report, methodology, hardware details, full tables, and artifact index live in [docs/benchmarks/README.md](./docs/benchmarks/README.md). The figures below cover the main scaling result, the image-dataset embedding comparisons, and one medium dense runtime comparison.
 
 ### Scaling Sweep
 
@@ -101,6 +101,18 @@ The scaling sweep shows the key trend in this project: the CUDA FFT path grows w
 On a shared sparse graph built from the `MNIST` training split, the CUDA FFT path preserves visually consistent digit clusters while delivering a large runtime advantage over sklearn Barnes-Hut.
 
 ![TorchTSNE MNIST embedding comparison](./docs/benchmarks/benchmark_mnist_60k_embeddings.png)
+
+### CIFAR-10 2D Embedding Comparison
+
+On the shared `CIFAR-10` training graph, the CUDA FFT path preserves the coarse class layout while cutting runtime to `0.935s` versus `134.721s` for sklearn Barnes-Hut on this workstation.
+
+![TorchTSNE CIFAR-10 embedding comparison](./docs/benchmarks/benchmark_cifar10_50k_embeddings.png)
+
+### CIFAR-100 2D Embedding Comparison
+
+On `CIFAR-100`, the same sparse-graph workflow still produces a readable fine-label embedding, and the CUDA FFT path reaches `111.40x` speedup versus sklearn Barnes-Hut in the matched benchmark run.
+
+![TorchTSNE CIFAR-100 embedding comparison](./docs/benchmarks/benchmark_cifar100_50k_embeddings.png)
 
 ### Medium Dense Comparison
 

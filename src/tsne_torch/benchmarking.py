@@ -45,9 +45,11 @@ SCALING_SWEEP_BASELINES = (
     'tsne_torch_fft_cuda',
 )
 SCALING_SWEEP_FIT_MIN_SAMPLE_COUNT = 5000
-MNIST_PCA_COMPONENTS = 50
-MNIST_GRAPH_NEIGHBORS = 48
+VISION_PCA_COMPONENTS = 50
+VISION_GRAPH_NEIGHBORS = 48
 MNIST_BENCHMARK_DATASET = 'mnist_train_60000_graph'
+CIFAR10_BENCHMARK_DATASET = 'cifar10_train_50000_graph'
+CIFAR100_BENCHMARK_DATASET = 'cifar100_train_50000_graph'
 
 
 def configure_logging():
@@ -512,9 +514,16 @@ def save_embedding_comparison_chart(
 
     plt.style.use('default')
     display_name = profile.get('display_name', name)
+    label_title = profile.get('plot_label_title', 'Label')
     unique_labels = np.unique(labels)
-    cmap = plt.get_cmap('tab10', len(unique_labels))
+    if len(unique_labels) <= 10:
+        cmap = plt.get_cmap('tab10', len(unique_labels))
+    elif len(unique_labels) <= 20:
+        cmap = plt.get_cmap('tab20', len(unique_labels))
+    else:
+        cmap = plt.get_cmap('gist_ncar', len(unique_labels))
     color_lookup = {label: cmap(index) for index, label in enumerate(unique_labels)}
+    show_legend = len(unique_labels) <= 20
 
     normalized_embeddings = {
         row['baseline']: _normalize_embedding_for_plot(embeddings_by_baseline[row['baseline']])
@@ -527,7 +536,7 @@ def save_embedding_comparison_chart(
     fig, axes = plt.subplots(1, len(available_rows), figsize=(6.1 * len(available_rows), 6.2), constrained_layout=False)
     if len(available_rows) == 1:
         axes = [axes]
-    fig.subplots_adjust(left=0.04, right=0.88, bottom=0.08, top=0.82, wspace=0.08)
+    fig.subplots_adjust(left=0.04, right=0.88 if show_legend else 0.98, bottom=0.08, top=0.82, wspace=0.08)
     fig.suptitle(f'{display_name} 2D Embedding Comparison', fontsize=17, fontweight='bold', y=0.97)
     fig.text(
         0.5,
@@ -563,17 +572,28 @@ def save_embedding_comparison_chart(
         for spine in ax.spines.values():
             spine.set_alpha(0.35)
 
-    legend_handles = [
-        Line2D([0], [0], marker='o', color='w', label=str(label), markerfacecolor=color_lookup[label], markersize=7)
-        for label in unique_labels
-    ]
-    fig.legend(
-        handles=legend_handles,
-        title='Digit Label',
-        loc='center right',
-        bbox_to_anchor=(0.985, 0.52),
-        frameon=True,
-    )
+    if show_legend:
+        legend_handles = [
+            Line2D([0], [0], marker='o', color='w', label=str(label), markerfacecolor=color_lookup[label], markersize=7)
+            for label in unique_labels
+        ]
+        fig.legend(
+            handles=legend_handles,
+            title=label_title,
+            loc='center right',
+            bbox_to_anchor=(0.985, 0.52),
+            frameon=True,
+        )
+    else:
+        fig.text(
+            0.985,
+            0.52,
+            f'Colored by {label_title.lower()}\n{len(unique_labels)} classes\nLegend omitted for readability',
+            ha='right',
+            va='center',
+            fontsize=10,
+            bbox={'boxstyle': 'round,pad=0.4', 'facecolor': 'white', 'alpha': 0.92, 'edgecolor': '#cccccc'},
+        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=220, bbox_inches='tight', pad_inches=0.3)
@@ -1088,6 +1108,41 @@ def build_quality_reference_subset(
     return centers[labels] + noise
 
 
+def load_torchvision_training_data(dataset_name: str, data_root: Path, *, download: bool):
+    """
+    Load a torchvision training split as a flattened float32 matrix in ``[0, 1]``.
+
+    :param dataset_name: Supported dataset name: ``'mnist'``, ``'cifar10'``, or ``'cifar100'``.
+    :param data_root: Local dataset cache directory used by ``torchvision``.
+    :param download: Whether missing dataset files may be downloaded.
+
+    :return: Tuple ``(images, labels)`` with flattened features and integer labels.
+    """
+    try:
+        from torchvision.datasets import CIFAR10, CIFAR100, MNIST
+    except ImportError as exc:
+        raise ImportError('Image benchmark datasets require torchvision to be installed.') from exc
+
+    datasets = {
+        'mnist': MNIST,
+        'cifar10': CIFAR10,
+        'cifar100': CIFAR100,
+    }
+    try:
+        dataset_class = datasets[dataset_name]
+    except KeyError as exc:
+        raise ValueError(f'Unsupported torchvision dataset: {dataset_name}') from exc
+
+    dataset = dataset_class(root=str(data_root), train=True, download=download)
+    if dataset_name == 'mnist':
+        images = dataset.data.numpy().reshape(len(dataset), -1).astype(np.float32) / 255.0
+        labels = dataset.targets.numpy().astype(np.int64)
+    else:
+        images = np.asarray(dataset.data, dtype=np.float32).reshape(len(dataset), -1) / 255.0
+        labels = np.asarray(dataset.targets, dtype=np.int64)
+    return images, labels
+
+
 def load_mnist_training_data(data_root: Path, *, download: bool):
     """
     Load the MNIST training split as a flattened float32 matrix in ``[0, 1]``.
@@ -1097,15 +1152,31 @@ def load_mnist_training_data(data_root: Path, *, download: bool):
 
     :return: Tuple ``(images, labels)`` with shapes ``(60000, 784)`` and ``(60000,)``.
     """
-    try:
-        from torchvision.datasets import MNIST
-    except ImportError as exc:
-        raise ImportError('MNIST benchmark requires torchvision to be installed.') from exc
+    return load_torchvision_training_data('mnist', data_root, download=download)
 
-    dataset = MNIST(root=str(data_root), train=True, download=download)
-    images = dataset.data.numpy().reshape(len(dataset), -1).astype(np.float32) / 255.0
-    labels = dataset.targets.numpy().astype(np.int64)
-    return images, labels
+
+def load_cifar10_training_data(data_root: Path, *, download: bool):
+    """
+    Load the CIFAR-10 training split as a flattened float32 matrix in ``[0, 1]``.
+
+    :param data_root: Local dataset cache directory used by ``torchvision``.
+    :param download: Whether missing dataset files may be downloaded.
+
+    :return: Tuple ``(images, labels)`` with shapes ``(50000, 3072)`` and ``(50000,)``.
+    """
+    return load_torchvision_training_data('cifar10', data_root, download=download)
+
+
+def load_cifar100_training_data(data_root: Path, *, download: bool):
+    """
+    Load the CIFAR-100 training split as a flattened float32 matrix in ``[0, 1]``.
+
+    :param data_root: Local dataset cache directory used by ``torchvision``.
+    :param download: Whether missing dataset files may be downloaded.
+
+    :return: Tuple ``(images, labels)`` with shapes ``(50000, 3072)`` and ``(50000,)``.
+    """
+    return load_torchvision_training_data('cifar100', data_root, download=download)
 
 
 def build_exact_topk_distance_graph(
@@ -1164,10 +1235,20 @@ def build_exact_topk_distance_graph(
     return csr_array((distances, indices, indptr), shape=(n_samples, n_samples))
 
 
-def load_or_build_mnist_sparse_graph(*, random_state: int, dataset_build_device: str):
+def load_or_build_image_sparse_graph(
+    *,
+    cache_key: str,
+    display_name: str,
+    data_loader,
+    random_state: int,
+    dataset_build_device: str,
+):
     """
-    Load or build a cached PCA-reduced exact sparse graph for the MNIST training split.
+    Load or build a cached PCA-reduced exact sparse graph for an image training split.
 
+    :param cache_key: Stable cache-key prefix used for the saved sparse graph.
+    :param display_name: Human-readable dataset name for log messages.
+    :param data_loader: Callable returning ``(images, labels)`` for the training split.
     :param random_state: Random seed used for PCA.
     :param dataset_build_device: Requested device used while constructing the graph.
 
@@ -1177,30 +1258,84 @@ def load_or_build_mnist_sparse_graph(*, random_state: int, dataset_build_device:
     cache_dir = Path('data') / 'benchmarks'
     cache_dir.mkdir(parents=True, exist_ok=True)
     graph_path = cache_dir / (
-        f'mnist_train_60000_knn{MNIST_GRAPH_NEIGHBORS}_pca{MNIST_PCA_COMPONENTS}_seed{random_state}.npz'
+        f'{cache_key}_knn{VISION_GRAPH_NEIGHBORS}_pca{VISION_PCA_COMPONENTS}_seed{random_state}.npz'
     )
 
     download = not graph_path.exists()
     try:
-        raw_images, labels = load_mnist_training_data(data_root, download=download)
+        raw_images, labels = data_loader(data_root, download=download)
     except RuntimeError:
-        raw_images, labels = load_mnist_training_data(data_root, download=True)
+        raw_images, labels = data_loader(data_root, download=True)
 
     if graph_path.exists():
-        LOGGER.info('Loading cached MNIST sparse graph from %s', graph_path)
+        LOGGER.info('Loading cached %s sparse graph from %s', display_name, graph_path)
         return raw_images, labels, csr_array(sp.load_npz(graph_path))
 
-    LOGGER.info('Building MNIST sparse graph from raw training images')
-    pca = PCA(n_components=MNIST_PCA_COMPONENTS, svd_solver='randomized', random_state=random_state)
+    LOGGER.info('Building %s sparse graph from raw training images', display_name)
+    pca = PCA(n_components=VISION_PCA_COMPONENTS, svd_solver='randomized', random_state=random_state)
     reduced = pca.fit_transform(raw_images).astype(np.float32, copy=False)
     graph = build_exact_topk_distance_graph(
         reduced,
-        n_neighbors=MNIST_GRAPH_NEIGHBORS,
+        n_neighbors=VISION_GRAPH_NEIGHBORS,
         device=dataset_build_device,
     )
     sp.save_npz(graph_path, sp.csr_matrix(graph))
-    LOGGER.info('Saved MNIST sparse graph cache to %s', graph_path)
+    LOGGER.info('Saved %s sparse graph cache to %s', display_name, graph_path)
     return raw_images, labels, graph
+
+
+def load_or_build_mnist_sparse_graph(*, random_state: int, dataset_build_device: str):
+    """
+    Load or build a cached PCA-reduced exact sparse graph for the MNIST training split.
+
+    :param random_state: Random seed used for PCA.
+    :param dataset_build_device: Requested device used while constructing the graph.
+
+    :return: Tuple ``(raw_images, labels, sparse_graph)``.
+    """
+    return load_or_build_image_sparse_graph(
+        cache_key='mnist_train_60000',
+        display_name='MNIST',
+        data_loader=load_mnist_training_data,
+        random_state=random_state,
+        dataset_build_device=dataset_build_device,
+    )
+
+
+def load_or_build_cifar10_sparse_graph(*, random_state: int, dataset_build_device: str):
+    """
+    Load or build a cached PCA-reduced exact sparse graph for the CIFAR-10 training split.
+
+    :param random_state: Random seed used for PCA.
+    :param dataset_build_device: Requested device used while constructing the graph.
+
+    :return: Tuple ``(raw_images, labels, sparse_graph)``.
+    """
+    return load_or_build_image_sparse_graph(
+        cache_key='cifar10_train_50000',
+        display_name='CIFAR-10',
+        data_loader=load_cifar10_training_data,
+        random_state=random_state,
+        dataset_build_device=dataset_build_device,
+    )
+
+
+def load_or_build_cifar100_sparse_graph(*, random_state: int, dataset_build_device: str):
+    """
+    Load or build a cached PCA-reduced exact sparse graph for the CIFAR-100 training split.
+
+    :param random_state: Random seed used for PCA.
+    :param dataset_build_device: Requested device used while constructing the graph.
+
+    :return: Tuple ``(raw_images, labels, sparse_graph)``.
+    """
+    return load_or_build_image_sparse_graph(
+        cache_key='cifar100_train_50000',
+        display_name='CIFAR-100',
+        data_loader=load_cifar100_training_data,
+        random_state=random_state,
+        dataset_build_device=dataset_build_device,
+    )
 
 
 def build_datasets(
@@ -1389,7 +1524,48 @@ def build_datasets(
             'perplexity': 15.0,
             'scalable_only': True,
             'display_name': 'MNIST Train 60k',
-            'benchmark_note': f'PCA({MNIST_PCA_COMPONENTS}) exact {MNIST_GRAPH_NEIGHBORS}-NN sparse graph',
+            'plot_label_title': 'Digit Label',
+            'benchmark_note': f'PCA({VISION_PCA_COMPONENTS}) exact {VISION_GRAPH_NEIGHBORS}-NN sparse graph',
+        }
+    if include_only_when_selected(CIFAR10_BENCHMARK_DATASET):
+        cifar10_x, cifar10_labels, cifar10_graph = load_or_build_cifar10_sparse_graph(
+            random_state=random_state,
+            dataset_build_device=dataset_build_device,
+        )
+        datasets[CIFAR10_BENCHMARK_DATASET] = {
+            'fit_input': cifar10_graph,
+            'quality_reference': cifar10_x,
+            'plot_labels': cifar10_labels,
+            'metric': 'precomputed',
+            'input_shape': list(cifar10_x.shape),
+            'fit_input_shape': list(cifar10_graph.shape),
+            'graph_nnz': int(cifar10_graph.nnz),
+            'max_iter': 250,
+            'perplexity': 15.0,
+            'scalable_only': True,
+            'display_name': 'CIFAR-10 Train 50k',
+            'plot_label_title': 'Class Label',
+            'benchmark_note': f'PCA({VISION_PCA_COMPONENTS}) exact {VISION_GRAPH_NEIGHBORS}-NN sparse graph',
+        }
+    if include_only_when_selected(CIFAR100_BENCHMARK_DATASET):
+        cifar100_x, cifar100_labels, cifar100_graph = load_or_build_cifar100_sparse_graph(
+            random_state=random_state,
+            dataset_build_device=dataset_build_device,
+        )
+        datasets[CIFAR100_BENCHMARK_DATASET] = {
+            'fit_input': cifar100_graph,
+            'quality_reference': cifar100_x,
+            'plot_labels': cifar100_labels,
+            'metric': 'precomputed',
+            'input_shape': list(cifar100_x.shape),
+            'fit_input_shape': list(cifar100_graph.shape),
+            'graph_nnz': int(cifar100_graph.nnz),
+            'max_iter': 250,
+            'perplexity': 15.0,
+            'scalable_only': True,
+            'display_name': 'CIFAR-100 Train 50k',
+            'plot_label_title': 'Fine Label',
+            'benchmark_note': f'PCA({VISION_PCA_COMPONENTS}) exact {VISION_GRAPH_NEIGHBORS}-NN sparse graph',
         }
     return datasets
 

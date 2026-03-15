@@ -5,9 +5,11 @@ import uuid
 import pytest
 
 import numpy as np
+from scipy.sparse import csr_array
 
 from tsne_torch.benchmarking import (
     analyze_scaling_sweep,
+    build_datasets,
     save_dataset_chart,
     save_embedding_comparison_chart,
     save_scaling_sweep_chart,
@@ -194,3 +196,84 @@ def test_embedding_comparison_chart_is_written():
                 break
             except PermissionError:
                 sleep(0.1)
+
+
+def test_embedding_comparison_chart_supports_many_classes_without_full_legend():
+    pytest.importorskip('matplotlib')
+
+    rows = [
+        {
+            'baseline': 'sklearn_barnes_hut',
+            'median_duration': 8.0,
+            'trustworthiness': 0.62,
+        },
+        {
+            'baseline': 'tsne_torch_fft_cuda',
+            'median_duration': 0.9,
+            'trustworthiness': 0.64,
+        },
+    ]
+    labels = np.arange(30, dtype=np.int64)
+    profile = {
+        'display_name': 'CIFAR-100 Train 50k',
+        'plot_label_title': 'Fine Label',
+        'plot_labels': labels,
+    }
+    embeddings = {
+        'sklearn_barnes_hut': np.stack([labels.astype(np.float32), np.sin(labels)], axis=1),
+        'tsne_torch_fft_cuda': np.stack([labels.astype(np.float32), np.cos(labels)], axis=1),
+    }
+
+    output_path = Path(__file__).resolve().parent / f'_tmp_embedding_chart_many_{uuid.uuid4().hex}.png'
+    try:
+        saved_path = save_embedding_comparison_chart(
+            'cifar100_train_50000_graph',
+            profile,
+            rows,
+            embeddings,
+            output_path,
+        )
+
+        assert saved_path == output_path
+        assert output_path.exists()
+        assert output_path.stat().st_size > 0
+    finally:
+        for _ in range(5):
+            try:
+                output_path.unlink(missing_ok=True)
+                break
+            except PermissionError:
+                sleep(0.1)
+
+
+def test_build_datasets_includes_selected_cifar_profiles(monkeypatch):
+    fake_graph = csr_array(
+        (
+            np.asarray([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
+            np.asarray([1, 0, 1, 0], dtype=np.int32),
+            np.asarray([0, 2, 4], dtype=np.int64),
+        ),
+        shape=(2, 2),
+    )
+    fake_images = np.zeros((2, 3072), dtype=np.float32)
+    fake_labels = np.asarray([0, 1], dtype=np.int64)
+
+    monkeypatch.setattr(
+        'tsne_torch.benchmarking.load_or_build_cifar10_sparse_graph',
+        lambda **kwargs: (fake_images, fake_labels, fake_graph),
+    )
+    monkeypatch.setattr(
+        'tsne_torch.benchmarking.load_or_build_cifar100_sparse_graph',
+        lambda **kwargs: (fake_images, fake_labels, fake_graph),
+    )
+
+    datasets = build_datasets(
+        0,
+        selected=['cifar10_train_50000_graph', 'cifar100_train_50000_graph'],
+        dataset_build_device='cpu',
+    )
+
+    assert 'cifar10_train_50000_graph' in datasets
+    assert 'cifar100_train_50000_graph' in datasets
+    assert datasets['cifar10_train_50000_graph']['display_name'] == 'CIFAR-10 Train 50k'
+    assert datasets['cifar100_train_50000_graph']['plot_label_title'] == 'Fine Label'

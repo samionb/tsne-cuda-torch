@@ -41,6 +41,10 @@ dev = [
   "matplotlib>=3.7",
   "psutil>=5.9",
   "pytest>=7.4",
+  "flake8>=7.0",
+  "flake8-cognitive-complexity>=0.1.0",
+  "pydocstyle>=6.3",
+  "pymarkdownlnt>=0.9.35",
 ]
 
 [project.scripts]

@@ -602,21 +602,13 @@ def save_embedding_comparison_chart(
     return output_path
 
 
-def save_scaling_sweep_chart(  # noqa: CCR001
-    name: str,
-    summary_rows: list[dict],
-    output_path: Path,
-    analysis: dict | None = None,
-):
+def _load_matplotlib_for_scaling_chart(name: str):
     """
-    Render and save a log-scale scaling chart across multiple dataset sizes.
+    Import Matplotlib for scaling-sweep chart generation.
 
-    :param name: Sweep identifier.
-    :param summary_rows: Sweep summary rows keyed by sample size.
-    :param output_path: PNG output path.
-    :param analysis: Optional precomputed sweep analysis dictionary.
+    :param name: Sweep identifier used for warning messages.
 
-    :return: Saved output path, or ``None`` when Matplotlib is unavailable.
+    :return: ``matplotlib.pyplot`` module, or ``None`` when unavailable.
     """
     try:
         import matplotlib
@@ -626,17 +618,32 @@ def save_scaling_sweep_chart(  # noqa: CCR001
     except ImportError:
         LOGGER.warning('Matplotlib is not available; skipping scaling sweep chart generation for %s', name)
         return None
+    return plt
 
-    plt.style.use('default')
+
+def _default_cycle_colors(plt) -> list[str]:
+    """
+    Return the active Matplotlib color cycle.
+
+    :param plt: Imported ``matplotlib.pyplot`` module.
+
+    :return: List of color specifiers.
+    """
     cycle_colors = plt.rcParams['axes.prop_cycle'].by_key().get('color', [])
-    if not cycle_colors:
-        cycle_colors = [f'C{i}' for i in range(10)]
+    if cycle_colors:
+        return cycle_colors
+    return [f'C{i}' for i in range(10)]
 
-    summary_rows = sorted(summary_rows, key=lambda row: row['sample_count'])
-    analysis = analyze_scaling_sweep(summary_rows) if analysis is None else analysis
-    sample_counts = np.asarray([row['sample_count'] for row in summary_rows], dtype=np.float64)
-    graph_nnz = np.asarray([row['graph_nnz'] for row in summary_rows], dtype=np.float64)
 
+def _build_scaling_runtime_series(summary_rows: list[dict], cycle_colors: list[str]) -> dict[str, dict]:
+    """
+    Build runtime plotting series for the scaling sweep.
+
+    :param summary_rows: Sweep summary rows keyed by sample size.
+    :param cycle_colors: Plot color cycle.
+
+    :return: Mapping from baseline name to plotting metadata.
+    """
     runtime_series = {}
     for index, baseline in enumerate(SCALING_SWEEP_BASELINES):
         durations = np.asarray(
@@ -649,19 +656,41 @@ def save_scaling_sweep_chart(  # noqa: CCR001
                 'color': cycle_colors[index % len(cycle_colors)],
                 'label': _format_baseline_label(baseline),
             }
+    return runtime_series
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 7.6), constrained_layout=False)
-    fig.subplots_adjust(left=0.07, right=0.98, bottom=0.22, top=0.80, wspace=0.12)
-    fig.suptitle('TorchTSNE vs scikit-learn Scaling Sweep', fontsize=17, fontweight='bold', y=0.985)
-    fig.text(
-        0.5,
-        0.952,
-        'Sparse 512-feature benchmark, 48-neighbor graph, log-scale runtime profiling',
-        ha='center',
-        fontsize=10.5,
-    )
 
-    runtime_ax = axes[0]
+def _build_scaling_fit_lines(analysis: dict, baselines: list[str], analysis_key: str, prefix: str, symbol: str):
+    """
+    Build annotation lines describing power-law fits.
+
+    :param analysis: Scaling analysis dictionary.
+    :param baselines: Baselines to include in the annotation.
+    :param analysis_key: Analysis sub-dictionary key.
+    :param prefix: Header text shown before the fit lines.
+    :param symbol: Symbol label used for the exponent.
+
+    :return: List of formatted annotation lines.
+    """
+    lines = [f'{prefix} for n >= {analysis["fit_min_sample_count"]:,}:']
+    for baseline in baselines:
+        fit = analysis[analysis_key].get(baseline)
+        if fit is None:
+            continue
+        lines.append(f'{_format_baseline_label(baseline)}: {symbol}={fit["exponent"]:.3f}, R^2={fit["r2_log10"]:.3f}')
+    return lines
+
+
+def _plot_scaling_runtime_axis(runtime_ax, sample_counts, runtime_series: dict, analysis: dict):
+    """
+    Render the runtime subplot for the scaling sweep figure.
+
+    :param runtime_ax: Matplotlib axes receiving the runtime plot.
+    :param sample_counts: Sample-count array.
+    :param runtime_series: Runtime series metadata.
+    :param analysis: Scaling analysis dictionary.
+
+    :return: None.
+    """
     for baseline, series in runtime_series.items():
         runtime_ax.plot(
             sample_counts,
@@ -673,16 +702,17 @@ def save_scaling_sweep_chart(  # noqa: CCR001
             label=series['label'],
         )
         fit = analysis['runtime_power_law'].get(baseline)
-        if fit is not None:
-            fit_x = sample_counts[sample_counts >= float(fit['min_sample_count'])]
-            runtime_ax.plot(
-                fit_x,
-                evaluate_power_law_curve(fit_x, fit),
-                linestyle='--',
-                linewidth=1.6,
-                alpha=0.85,
-                color=series['color'],
-            )
+        if fit is None:
+            continue
+        fit_x = sample_counts[sample_counts >= float(fit['min_sample_count'])]
+        runtime_ax.plot(
+            fit_x,
+            evaluate_power_law_curve(fit_x, fit),
+            linestyle='--',
+            linewidth=1.6,
+            alpha=0.85,
+            color=series['color'],
+        )
     runtime_ax.set_xscale('log')
     runtime_ax.set_yscale('log')
     runtime_ax.set_title('Runtime vs Sample Count')
@@ -690,18 +720,18 @@ def save_scaling_sweep_chart(  # noqa: CCR001
     runtime_ax.set_ylabel('Median Runtime (seconds)')
     runtime_ax.grid(True, which='both', linestyle='--', alpha=0.35)
     runtime_ax.legend(loc='upper left', frameon=True)
-    runtime_fit_lines = [f'Power-law fits for n >= {analysis["fit_min_sample_count"]:,}:']
-    for baseline in SCALING_SWEEP_BASELINES:
-        fit = analysis['runtime_power_law'].get(baseline)
-        if fit is None:
-            continue
-        runtime_fit_lines.append(
-            f'{_format_baseline_label(baseline)}: a={fit["exponent"]:.3f}, R^2={fit["r2_log10"]:.3f}'
-        )
     runtime_ax.text(
         0.98,
         0.03,
-        '\n'.join(runtime_fit_lines),
+        '\n'.join(
+            _build_scaling_fit_lines(
+                analysis,
+                list(SCALING_SWEEP_BASELINES),
+                'runtime_power_law',
+                'Power-law fits',
+                'a',
+            )
+        ),
         transform=runtime_ax.transAxes,
         ha='right',
         va='bottom',
@@ -709,7 +739,19 @@ def save_scaling_sweep_chart(  # noqa: CCR001
         bbox={'boxstyle': 'round,pad=0.3', 'facecolor': 'white', 'edgecolor': '#b0b0b0'},
     )
 
-    speedup_ax = axes[1]
+
+def _plot_scaling_speedup_axis(speedup_ax, sample_counts, summary_rows: list[dict], cycle_colors: list[str], analysis: dict):
+    """
+    Render the speedup subplot for the scaling sweep figure.
+
+    :param speedup_ax: Matplotlib axes receiving the speedup plot.
+    :param sample_counts: Sample-count array.
+    :param summary_rows: Sweep summary rows keyed by sample size.
+    :param cycle_colors: Plot color cycle.
+    :param analysis: Scaling analysis dictionary.
+
+    :return: None.
+    """
     for index, baseline in enumerate(SCALING_SWEEP_BASELINES[1:], start=1):
         speedups = np.asarray(
             [row.get(f'{baseline}_speedup_vs_sklearn', np.nan) for row in summary_rows],
@@ -717,26 +759,28 @@ def save_scaling_sweep_chart(  # noqa: CCR001
         )
         if not np.any(np.isfinite(speedups)):
             continue
+        color = cycle_colors[index % len(cycle_colors)]
         speedup_ax.plot(
             sample_counts,
             speedups,
             marker='o',
             linewidth=2.2,
             markersize=6,
-            color=cycle_colors[index % len(cycle_colors)],
+            color=color,
             label=f'{_format_baseline_label(baseline)} vs sklearn Barnes-Hut',
         )
         fit = analysis['speedup_power_law'].get(baseline)
-        if fit is not None:
-            fit_x = sample_counts[sample_counts >= float(fit['min_sample_count'])]
-            speedup_ax.plot(
-                fit_x,
-                evaluate_power_law_curve(fit_x, fit),
-                linestyle='--',
-                linewidth=1.6,
-                alpha=0.85,
-                color=cycle_colors[index % len(cycle_colors)],
-            )
+        if fit is None:
+            continue
+        fit_x = sample_counts[sample_counts >= float(fit['min_sample_count'])]
+        speedup_ax.plot(
+            fit_x,
+            evaluate_power_law_curve(fit_x, fit),
+            linestyle='--',
+            linewidth=1.6,
+            alpha=0.85,
+            color=color,
+        )
     speedup_ax.set_xscale('log')
     speedup_ax.set_title('Speedup vs scikit-learn Barnes-Hut')
     speedup_ax.set_xlabel('Samples')
@@ -749,6 +793,17 @@ def save_scaling_sweep_chart(  # noqa: CCR001
         ncol=1,
     )
 
+
+def _annotate_scaling_speedup_axis(speedup_ax, graph_nnz, analysis: dict):
+    """
+    Add sweep metadata annotations to the speedup subplot.
+
+    :param speedup_ax: Matplotlib axes receiving the annotations.
+    :param graph_nnz: Sparse graph edge counts across the sweep.
+    :param analysis: Scaling analysis dictionary.
+
+    :return: None.
+    """
     nnz_note = (
         f'Graph edges sweep from {int(graph_nnz.min()):,} to {int(graph_nnz.max()):,} '
         f'(48 neighbors per sample)'
@@ -763,24 +818,63 @@ def save_scaling_sweep_chart(  # noqa: CCR001
         fontsize=9,
         bbox={'boxstyle': 'round,pad=0.3', 'facecolor': 'white', 'edgecolor': '#b0b0b0'},
     )
-    speedup_fit_lines = [f'Power-law speedup fits for n >= {analysis["fit_min_sample_count"]:,}:']
-    for baseline in SCALING_SWEEP_BASELINES[1:]:
-        fit = analysis['speedup_power_law'].get(baseline)
-        if fit is None:
-            continue
-        speedup_fit_lines.append(
-            f'{_format_baseline_label(baseline)}: beta={fit["exponent"]:.3f}, R^2={fit["r2_log10"]:.3f}'
-        )
     speedup_ax.text(
         0.02,
         0.05,
-        '\n'.join(speedup_fit_lines),
+        '\n'.join(
+            _build_scaling_fit_lines(
+                analysis,
+                list(SCALING_SWEEP_BASELINES[1:]),
+                'speedup_power_law',
+                'Power-law speedup fits',
+                'beta',
+            )
+        ),
         transform=speedup_ax.transAxes,
         ha='left',
         va='bottom',
         fontsize=8.4,
         bbox={'boxstyle': 'round,pad=0.3', 'facecolor': 'white', 'edgecolor': '#b0b0b0'},
     )
+
+
+def save_scaling_sweep_chart(name: str, summary_rows: list[dict], output_path: Path, analysis: dict | None = None):
+    """
+    Render and save a log-scale scaling chart across multiple dataset sizes.
+
+    :param name: Sweep identifier.
+    :param summary_rows: Sweep summary rows keyed by sample size.
+    :param output_path: PNG output path.
+    :param analysis: Optional precomputed sweep analysis dictionary.
+
+    :return: Saved output path, or ``None`` when Matplotlib is unavailable.
+    """
+    plt = _load_matplotlib_for_scaling_chart(name)
+    if plt is None:
+        return None
+
+    plt.style.use('default')
+    cycle_colors = _default_cycle_colors(plt)
+    summary_rows = sorted(summary_rows, key=lambda row: row['sample_count'])
+    analysis = analyze_scaling_sweep(summary_rows) if analysis is None else analysis
+    sample_counts = np.asarray([row['sample_count'] for row in summary_rows], dtype=np.float64)
+    graph_nnz = np.asarray([row['graph_nnz'] for row in summary_rows], dtype=np.float64)
+    runtime_series = _build_scaling_runtime_series(summary_rows, cycle_colors)
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7.6), constrained_layout=False)
+    fig.subplots_adjust(left=0.07, right=0.98, bottom=0.22, top=0.80, wspace=0.12)
+    fig.suptitle('TorchTSNE vs scikit-learn Scaling Sweep', fontsize=17, fontweight='bold', y=0.985)
+    fig.text(
+        0.5,
+        0.952,
+        'Sparse 512-feature benchmark, 48-neighbor graph, log-scale runtime profiling',
+        ha='center',
+        fontsize=10.5,
+    )
+
+    _plot_scaling_runtime_axis(axes[0], sample_counts, runtime_series, analysis)
+    _plot_scaling_speedup_axis(axes[1], sample_counts, summary_rows, cycle_colors, analysis)
+    _annotate_scaling_speedup_axis(axes[1], graph_nnz, analysis)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=220, bbox_inches='tight', pad_inches=0.35)
@@ -1347,7 +1441,327 @@ def load_or_build_cifar100_sparse_graph(*, random_state: int, dataset_build_devi
     )
 
 
-def build_datasets(  # noqa: CCR001
+def _should_include_dataset(requested: set[str] | None, name: str, *, selected_only: bool = False) -> bool:
+    """
+    Determine whether a benchmark dataset should be built.
+
+    :param requested: Optional selected dataset names.
+    :param name: Dataset identifier under consideration.
+    :param selected_only: Whether the dataset is opt-in only.
+
+    :return: ``True`` when the dataset should be constructed.
+    """
+    if requested is None:
+        return not selected_only
+    return name in requested
+
+
+def _dense_benchmark_profile(x, *, plot_labels=None, max_iter: int = 300, perplexity: float = 30.0) -> dict:
+    """
+    Build a standard dense benchmark profile.
+
+    :param x: Dense input matrix used for fitting and quality evaluation.
+    :param plot_labels: Optional plot labels aligned with ``x``.
+    :param max_iter: Maximum t-SNE iterations for this profile.
+    :param perplexity: Perplexity used by the benchmark baselines.
+
+    :return: Dense dataset profile dictionary.
+    """
+    profile = {
+        'fit_input': x,
+        'quality_reference': x,
+        'metric': 'euclidean',
+        'input_shape': list(x.shape),
+        'max_iter': max_iter,
+        'perplexity': perplexity,
+        'scalable_only': False,
+    }
+    if plot_labels is not None:
+        profile['plot_labels'] = plot_labels
+    return profile
+
+
+def _sparse_benchmark_profile(
+    graph,
+    quality_reference,
+    *,
+    input_shape: list[int],
+    plot_labels=None,
+    max_iter: int = 250,
+    perplexity: float = 15.0,
+    sample_count: int | None = None,
+    sweep_group: str | None = None,
+    display_name: str | None = None,
+    plot_label_title: str | None = None,
+    benchmark_note: str | None = None,
+    disable_sklearn_baselines: bool = False,
+) -> dict:
+    """
+    Build a standard sparse benchmark profile.
+
+    :param graph: Sparse precomputed distance graph used for fitting.
+    :param quality_reference: Dense reference features used for quality metrics.
+    :param input_shape: Logical dataset shape reported in summaries.
+    :param plot_labels: Optional plot labels aligned with the reference samples.
+    :param max_iter: Maximum t-SNE iterations for this profile.
+    :param perplexity: Perplexity used by the benchmark baselines.
+    :param sample_count: Optional sample-count metadata used by sweep plots.
+    :param sweep_group: Optional scaling-sweep group identifier.
+    :param display_name: Optional human-readable dataset title.
+    :param plot_label_title: Optional legend title for labeled plots.
+    :param benchmark_note: Optional note shown in benchmark reports.
+    :param disable_sklearn_baselines: Whether sklearn baselines should be skipped.
+
+    :return: Sparse dataset profile dictionary.
+    """
+    profile = {
+        'fit_input': graph,
+        'quality_reference': quality_reference,
+        'metric': 'precomputed',
+        'input_shape': input_shape,
+        'fit_input_shape': list(graph.shape),
+        'graph_nnz': int(graph.nnz),
+        'max_iter': max_iter,
+        'perplexity': perplexity,
+        'scalable_only': True,
+    }
+    if plot_labels is not None:
+        profile['plot_labels'] = plot_labels
+    if sample_count is not None:
+        profile['sample_count'] = sample_count
+    if sweep_group is not None:
+        profile['sweep_group'] = sweep_group
+    if display_name is not None:
+        profile['display_name'] = display_name
+    if plot_label_title is not None:
+        profile['plot_label_title'] = plot_label_title
+    if benchmark_note is not None:
+        profile['benchmark_note'] = benchmark_note
+    if disable_sklearn_baselines:
+        profile['disable_sklearn_baselines'] = True
+    return profile
+
+
+def _add_small_blob_datasets(datasets: dict[str, dict], requested: set[str] | None, rng) -> None:
+    """
+    Add the small dense blob benchmarks.
+
+    :param datasets: Dataset mapping being populated.
+    :param requested: Optional selected dataset names.
+    :param rng: RandomState used for deterministic blob generation.
+
+    :return: None.
+    """
+    for n_samples in (512, 2000, 5000, 10000):
+        dataset_name = f'blobs_{n_samples}'
+        if not _should_include_dataset(requested, dataset_name):
+            continue
+        x, _ = make_blobs(
+            n_samples=n_samples,
+            n_features=32,
+            centers=20,
+            cluster_std=1.3,
+            random_state=rng,
+        )
+        datasets[dataset_name] = _dense_benchmark_profile(x.astype(np.float32))
+
+
+def _add_medium_dense_blob_dataset(datasets: dict[str, dict], requested: set[str] | None, rng) -> None:
+    """
+    Add the medium dense 2048x512 blob benchmark.
+
+    :param datasets: Dataset mapping being populated.
+    :param requested: Optional selected dataset names.
+    :param rng: RandomState used for deterministic blob generation.
+
+    :return: None.
+    """
+    dataset_name = 'blobs_2048_f512'
+    if not _should_include_dataset(requested, dataset_name):
+        return
+    x_large, _ = make_blobs(
+        n_samples=2048,
+        n_features=512,
+        centers=32,
+        cluster_std=1.1,
+        random_state=rng,
+    )
+    datasets[dataset_name] = _dense_benchmark_profile(x_large.astype(np.float32))
+
+
+def _add_large_sparse_blob_dataset(datasets: dict[str, dict], requested: set[str] | None, rng, random_state: int) -> None:
+    """
+    Add the 100k sparse blob graph benchmark.
+
+    :param datasets: Dataset mapping being populated.
+    :param requested: Optional selected dataset names.
+    :param rng: RandomState used for deterministic blob generation.
+    :param random_state: Seed used for graph construction.
+
+    :return: None.
+    """
+    dataset_name = 'blobs_100000_f512_graph'
+    if not _should_include_dataset(requested, dataset_name):
+        return
+    x_huge, labels_huge = make_blobs(
+        n_samples=100000,
+        n_features=512,
+        centers=64,
+        cluster_std=1.1,
+        random_state=rng,
+    )
+    x_huge = x_huge.astype(np.float32)
+    graph_huge = build_cluster_sampled_distance_graph(
+        x_huge,
+        labels_huge,
+        n_neighbors=48,
+        random_state=random_state,
+    )
+    datasets[dataset_name] = _sparse_benchmark_profile(
+        graph_huge,
+        x_huge,
+        input_shape=list(x_huge.shape),
+    )
+
+
+def _add_scaling_sweep_datasets(datasets: dict[str, dict], requested: set[str] | None, rng, random_state: int) -> None:
+    """
+    Add the sparse scaling-sweep datasets.
+
+    :param datasets: Dataset mapping being populated.
+    :param requested: Optional selected dataset names.
+    :param rng: RandomState used for deterministic blob generation.
+    :param random_state: Seed used for graph construction.
+
+    :return: None.
+    """
+    for n_samples in SCALING_SWEEP_SAMPLES:
+        dataset_name = f'blobs_{n_samples}_f512_sweep_graph'
+        if not _should_include_dataset(requested, dataset_name):
+            continue
+        x_sweep, labels_sweep = make_blobs(
+            n_samples=n_samples,
+            n_features=512,
+            centers=16,
+            cluster_std=1.1,
+            random_state=rng,
+        )
+        x_sweep = x_sweep.astype(np.float32)
+        graph_sweep = build_cluster_sampled_distance_graph(
+            x_sweep,
+            labels_sweep,
+            n_neighbors=48,
+            random_state=random_state + n_samples,
+        )
+        datasets[dataset_name] = _sparse_benchmark_profile(
+            graph_sweep,
+            x_sweep[: min(len(x_sweep), 2000)].copy(),
+            input_shape=list(x_sweep.shape),
+            sample_count=n_samples,
+            sweep_group=SCALING_SWEEP_GROUP,
+        )
+
+
+def _add_million_sparse_dataset(datasets: dict[str, dict], requested: set[str] | None, random_state: int) -> None:
+    """
+    Add the synthetic one-million-sample sparse benchmark.
+
+    :param datasets: Dataset mapping being populated.
+    :param requested: Optional selected dataset names.
+    :param random_state: Seed used for graph construction and quality sampling.
+
+    :return: None.
+    """
+    dataset_name = 'blobs_1000000_f512_graph'
+    if not _should_include_dataset(requested, dataset_name):
+        return
+    graph_million = build_synthetic_cluster_graph(
+        n_samples=1_000_000,
+        n_features=512,
+        n_clusters=128,
+        cluster_std=1.1,
+        n_neighbors=48,
+        random_state=random_state,
+    )
+    quality_subset_million = build_quality_reference_subset(
+        n_samples=1_000_000,
+        n_features=512,
+        n_clusters=128,
+        cluster_std=1.1,
+        subset_size=2000,
+        random_state=random_state + 1,
+    )
+    datasets[dataset_name] = _sparse_benchmark_profile(
+        graph_million,
+        quality_subset_million,
+        input_shape=[1_000_000, 512],
+        disable_sklearn_baselines=True,
+    )
+
+
+def _add_digits_dataset(datasets: dict[str, dict], requested: set[str] | None) -> None:
+    """
+    Add the sklearn digits benchmark.
+
+    :param datasets: Dataset mapping being populated.
+    :param requested: Optional selected dataset names.
+
+    :return: None.
+    """
+    dataset_name = 'digits'
+    if not _should_include_dataset(requested, dataset_name):
+        return
+    digits = load_digits()
+    digits_x = digits.data.astype(np.float32)
+    datasets[dataset_name] = _dense_benchmark_profile(
+        digits_x,
+        plot_labels=digits.target.astype(np.int64),
+    )
+
+
+def _add_selected_vision_dataset(
+    datasets: dict[str, dict],
+    requested: set[str] | None,
+    *,
+    dataset_name: str,
+    loader,
+    random_state: int,
+    dataset_build_device: str,
+    display_name: str,
+    plot_label_title: str,
+) -> None:
+    """
+    Add one opt-in vision benchmark dataset.
+
+    :param datasets: Dataset mapping being populated.
+    :param requested: Optional selected dataset names.
+    :param dataset_name: Benchmark dataset identifier.
+    :param loader: Callable returning ``(features, labels, graph)``.
+    :param random_state: Seed used for dataset preprocessing.
+    :param dataset_build_device: Requested device used while constructing the graph.
+    :param display_name: Human-readable dataset title.
+    :param plot_label_title: Legend title used by embedding charts.
+
+    :return: None.
+    """
+    if not _should_include_dataset(requested, dataset_name, selected_only=True):
+        return
+    vision_x, vision_labels, vision_graph = loader(
+        random_state=random_state,
+        dataset_build_device=dataset_build_device,
+    )
+    datasets[dataset_name] = _sparse_benchmark_profile(
+        vision_graph,
+        vision_x,
+        input_shape=list(vision_x.shape),
+        plot_labels=vision_labels,
+        display_name=display_name,
+        plot_label_title=plot_label_title,
+        benchmark_note=f'PCA({VISION_PCA_COMPONENTS}) exact {VISION_GRAPH_NEIGHBORS}-NN sparse graph',
+    )
+
+
+def build_datasets(
     random_state: int,
     selected: list[str] | None = None,
     *,
@@ -1366,216 +1780,42 @@ def build_datasets(  # noqa: CCR001
     requested = None if selected is None else set(selected)
     datasets = {}
 
-    def include(name: str) -> bool:
-        return requested is None or name in requested
-
-    def include_only_when_selected(name: str) -> bool:
-        return requested is not None and name in requested
-
-    for n_samples in (512, 2000, 5000, 10000):
-        dataset_name = f'blobs_{n_samples}'
-        if not include(dataset_name):
-            continue
-        x, _ = make_blobs(
-            n_samples=n_samples,
-            n_features=32,
-            centers=20,
-            cluster_std=1.3,
-            random_state=rng,
-        )
-        x = x.astype(np.float32)
-        datasets[dataset_name] = {
-            'fit_input': x,
-            'quality_reference': x,
-            'metric': 'euclidean',
-            'input_shape': list(x.shape),
-            'max_iter': 300,
-            'perplexity': 30.0,
-            'scalable_only': False,
-        }
-
-    if include('blobs_2048_f512'):
-        x_large, _ = make_blobs(
-            n_samples=2048,
-            n_features=512,
-            centers=32,
-            cluster_std=1.1,
-            random_state=rng,
-        )
-        x_large = x_large.astype(np.float32)
-        datasets['blobs_2048_f512'] = {
-            'fit_input': x_large,
-            'quality_reference': x_large,
-            'metric': 'euclidean',
-            'input_shape': list(x_large.shape),
-            'max_iter': 300,
-            'perplexity': 30.0,
-            'scalable_only': False,
-        }
-
-    if include('blobs_100000_f512_graph'):
-        x_huge, labels_huge = make_blobs(
-            n_samples=100000,
-            n_features=512,
-            centers=64,
-            cluster_std=1.1,
-            random_state=rng,
-        )
-        x_huge = x_huge.astype(np.float32)
-        graph_huge = build_cluster_sampled_distance_graph(
-            x_huge,
-            labels_huge,
-            n_neighbors=48,
-            random_state=random_state,
-        )
-        datasets['blobs_100000_f512_graph'] = {
-            'fit_input': graph_huge,
-            'quality_reference': x_huge,
-            'metric': 'precomputed',
-            'input_shape': list(x_huge.shape),
-            'fit_input_shape': list(graph_huge.shape),
-            'graph_nnz': int(graph_huge.nnz),
-            'max_iter': 250,
-            'perplexity': 15.0,
-            'scalable_only': True,
-        }
-
-    for n_samples in SCALING_SWEEP_SAMPLES:
-        dataset_name = f'blobs_{n_samples}_f512_sweep_graph'
-        if not include(dataset_name):
-            continue
-        x_sweep, labels_sweep = make_blobs(
-            n_samples=n_samples,
-            n_features=512,
-            centers=16,
-            cluster_std=1.1,
-            random_state=rng,
-        )
-        x_sweep = x_sweep.astype(np.float32)
-        graph_sweep = build_cluster_sampled_distance_graph(
-            x_sweep,
-            labels_sweep,
-            n_neighbors=48,
-            random_state=random_state + n_samples,
-        )
-        datasets[dataset_name] = {
-            'fit_input': graph_sweep,
-            'quality_reference': x_sweep[: min(len(x_sweep), 2000)].copy(),
-            'metric': 'precomputed',
-            'input_shape': list(x_sweep.shape),
-            'fit_input_shape': list(graph_sweep.shape),
-            'graph_nnz': int(graph_sweep.nnz),
-            'max_iter': 250,
-            'perplexity': 15.0,
-            'scalable_only': True,
-            'sweep_group': SCALING_SWEEP_GROUP,
-            'sample_count': n_samples,
-        }
-
-    if include('blobs_1000000_f512_graph'):
-        graph_million = build_synthetic_cluster_graph(
-            n_samples=1_000_000,
-            n_features=512,
-            n_clusters=128,
-            cluster_std=1.1,
-            n_neighbors=48,
-            random_state=random_state,
-        )
-        quality_subset_million = build_quality_reference_subset(
-            n_samples=1_000_000,
-            n_features=512,
-            n_clusters=128,
-            cluster_std=1.1,
-            subset_size=2000,
-            random_state=random_state + 1,
-        )
-        datasets['blobs_1000000_f512_graph'] = {
-            'fit_input': graph_million,
-            'quality_reference': quality_subset_million,
-            'metric': 'precomputed',
-            'input_shape': [1_000_000, 512],
-            'fit_input_shape': list(graph_million.shape),
-            'graph_nnz': int(graph_million.nnz),
-            'max_iter': 250,
-            'perplexity': 15.0,
-            'scalable_only': True,
-            'disable_sklearn_baselines': True,
-        }
-
-    if include('digits'):
-        digits = load_digits()
-        digits_x = digits.data.astype(np.float32)
-        datasets['digits'] = {
-            'fit_input': digits_x,
-            'quality_reference': digits_x,
-            'plot_labels': digits.target.astype(np.int64),
-            'metric': 'euclidean',
-            'input_shape': list(digits_x.shape),
-            'max_iter': 300,
-            'perplexity': 30.0,
-            'scalable_only': False,
-        }
-
-    if include_only_when_selected(MNIST_BENCHMARK_DATASET):
-        mnist_x, mnist_labels, mnist_graph = load_or_build_mnist_sparse_graph(
-            random_state=random_state,
-            dataset_build_device=dataset_build_device,
-        )
-        datasets[MNIST_BENCHMARK_DATASET] = {
-            'fit_input': mnist_graph,
-            'quality_reference': mnist_x,
-            'plot_labels': mnist_labels,
-            'metric': 'precomputed',
-            'input_shape': list(mnist_x.shape),
-            'fit_input_shape': list(mnist_graph.shape),
-            'graph_nnz': int(mnist_graph.nnz),
-            'max_iter': 250,
-            'perplexity': 15.0,
-            'scalable_only': True,
-            'display_name': 'MNIST Train 60k',
-            'plot_label_title': 'Digit Label',
-            'benchmark_note': f'PCA({VISION_PCA_COMPONENTS}) exact {VISION_GRAPH_NEIGHBORS}-NN sparse graph',
-        }
-    if include_only_when_selected(CIFAR10_BENCHMARK_DATASET):
-        cifar10_x, cifar10_labels, cifar10_graph = load_or_build_cifar10_sparse_graph(
-            random_state=random_state,
-            dataset_build_device=dataset_build_device,
-        )
-        datasets[CIFAR10_BENCHMARK_DATASET] = {
-            'fit_input': cifar10_graph,
-            'quality_reference': cifar10_x,
-            'plot_labels': cifar10_labels,
-            'metric': 'precomputed',
-            'input_shape': list(cifar10_x.shape),
-            'fit_input_shape': list(cifar10_graph.shape),
-            'graph_nnz': int(cifar10_graph.nnz),
-            'max_iter': 250,
-            'perplexity': 15.0,
-            'scalable_only': True,
-            'display_name': 'CIFAR-10 Train 50k',
-            'plot_label_title': 'Class Label',
-            'benchmark_note': f'PCA({VISION_PCA_COMPONENTS}) exact {VISION_GRAPH_NEIGHBORS}-NN sparse graph',
-        }
-    if include_only_when_selected(CIFAR100_BENCHMARK_DATASET):
-        cifar100_x, cifar100_labels, cifar100_graph = load_or_build_cifar100_sparse_graph(
-            random_state=random_state,
-            dataset_build_device=dataset_build_device,
-        )
-        datasets[CIFAR100_BENCHMARK_DATASET] = {
-            'fit_input': cifar100_graph,
-            'quality_reference': cifar100_x,
-            'plot_labels': cifar100_labels,
-            'metric': 'precomputed',
-            'input_shape': list(cifar100_x.shape),
-            'fit_input_shape': list(cifar100_graph.shape),
-            'graph_nnz': int(cifar100_graph.nnz),
-            'max_iter': 250,
-            'perplexity': 15.0,
-            'scalable_only': True,
-            'display_name': 'CIFAR-100 Train 50k',
-            'plot_label_title': 'Fine Label',
-            'benchmark_note': f'PCA({VISION_PCA_COMPONENTS}) exact {VISION_GRAPH_NEIGHBORS}-NN sparse graph',
-        }
+    _add_small_blob_datasets(datasets, requested, rng)
+    _add_medium_dense_blob_dataset(datasets, requested, rng)
+    _add_large_sparse_blob_dataset(datasets, requested, rng, random_state)
+    _add_scaling_sweep_datasets(datasets, requested, rng, random_state)
+    _add_million_sparse_dataset(datasets, requested, random_state)
+    _add_digits_dataset(datasets, requested)
+    _add_selected_vision_dataset(
+        datasets,
+        requested,
+        dataset_name=MNIST_BENCHMARK_DATASET,
+        loader=load_or_build_mnist_sparse_graph,
+        random_state=random_state,
+        dataset_build_device=dataset_build_device,
+        display_name='MNIST Train 60k',
+        plot_label_title='Digit Label',
+    )
+    _add_selected_vision_dataset(
+        datasets,
+        requested,
+        dataset_name=CIFAR10_BENCHMARK_DATASET,
+        loader=load_or_build_cifar10_sparse_graph,
+        random_state=random_state,
+        dataset_build_device=dataset_build_device,
+        display_name='CIFAR-10 Train 50k',
+        plot_label_title='Class Label',
+    )
+    _add_selected_vision_dataset(
+        datasets,
+        requested,
+        dataset_name=CIFAR100_BENCHMARK_DATASET,
+        loader=load_or_build_cifar100_sparse_graph,
+        random_state=random_state,
+        dataset_build_device=dataset_build_device,
+        display_name='CIFAR-100 Train 50k',
+        plot_label_title='Fine Label',
+    )
     return datasets
 
 
@@ -1671,7 +1911,108 @@ def build_baselines(device: str, profile: dict):
     return baselines
 
 
-def benchmark_dataset(name, profile: dict, repeats: int, device: str):  # noqa: CCR001
+def _should_warm_up_cuda_baseline(device: str, label: str) -> bool:
+    """
+    Determine whether a benchmark baseline needs a CUDA warm-up pass.
+
+    :param device: Requested benchmark device mode.
+    :param label: Baseline identifier.
+
+    :return: ``True`` when the baseline should be warmed up on CUDA.
+    """
+    return device == 'cuda' and torch.cuda.is_available() and label.endswith('_cuda')
+
+
+def _warm_up_cuda_baseline(label: str, model_factory, profile: dict, fit_input) -> None:
+    """
+    Execute the optional per-baseline CUDA warm-up pass.
+
+    :param label: Baseline identifier.
+    :param model_factory: Callable returning a fresh model instance.
+    :param profile: Dataset profile metadata.
+    :param fit_input: Input passed to ``fit_transform``.
+
+    :return: None.
+    """
+    if profile['metric'] == 'precomputed' and sp.issparse(fit_input):
+        LOGGER.info('Skipping per-model warm-up for %s on sparse precomputed input', label)
+        return
+    warm_model = model_factory()
+    if profile['metric'] == 'precomputed':
+        warm_input = fit_input[:256, :256]
+    else:
+        warm_input = fit_input[: min(len(fit_input), 256)]
+    warm_model.fit_transform(warm_input)
+    torch.cuda.synchronize()
+
+
+def _run_baseline_repeats(label: str, model_factory, fit_input, quality_reference, repeats: int, device: str):
+    """
+    Execute repeated benchmark runs for one baseline.
+
+    :param label: Baseline identifier.
+    :param model_factory: Callable returning a fresh model instance.
+    :param fit_input: Input passed to ``fit_transform``.
+    :param quality_reference: Reference features used for quality metrics.
+    :param repeats: Number of repeated runs.
+    :param device: Requested benchmark device mode.
+
+    :return: Tuple ``(durations, metrics, embedding)``.
+    """
+    durations = []
+    metrics = None
+    embedding = None
+    for _ in range(repeats):
+        if device == 'cuda' and torch.cuda.is_available():
+            torch.cuda.synchronize()
+        model = model_factory()
+        embedding, duration, diagnostics, kl_divergence, trust, overlap, memory = run_model(
+            model,
+            fit_input,
+            quality_reference,
+        )
+        if device == 'cuda' and torch.cuda.is_available():
+            torch.cuda.synchronize()
+        durations.append(duration)
+        metrics = {
+            'embedding_shape': list(embedding.shape),
+            'diagnostics': diagnostics,
+            'memory': memory,
+            'kl_divergence': kl_divergence,
+            'trustworthiness': trust,
+            'knn_overlap': overlap,
+        }
+    return durations, metrics, embedding
+
+
+def _build_dataset_result_row(name: str, profile: dict, label: str, durations: list[float], metrics: dict) -> dict:
+    """
+    Build one benchmark result row for JSON reporting.
+
+    :param name: Dataset identifier.
+    :param profile: Dataset profile metadata and inputs.
+    :param label: Baseline identifier.
+    :param durations: Repeated run durations for the baseline.
+    :param metrics: Quality, memory, and diagnostics payload.
+
+    :return: Result row dictionary.
+    """
+    return {
+        'dataset': name,
+        'input_shape': profile['input_shape'],
+        'fit_input_shape': profile.get('fit_input_shape', profile['input_shape']),
+        'metric': profile['metric'],
+        'graph_nnz': profile.get('graph_nnz'),
+        'sample_count': profile.get('sample_count'),
+        'sweep_group': profile.get('sweep_group'),
+        'baseline': label,
+        'durations': durations,
+        'median_duration': median(durations),
+        **metrics,
+    }
+
+
+def benchmark_dataset(name, profile: dict, repeats: int, device: str):
     """
     Benchmark all supported baselines for a single dataset profile.
 
@@ -1688,55 +2029,19 @@ def benchmark_dataset(name, profile: dict, repeats: int, device: str):  # noqa: 
     dataset_results = []
     embeddings_by_baseline = {}
     for label, model_factory in baselines:
-        durations = []
-        metrics = None
-        if device == 'cuda' and torch.cuda.is_available() and label.endswith('_cuda'):
-            if profile['metric'] == 'precomputed' and sp.issparse(fit_input):
-                LOGGER.info('Skipping per-model warm-up for %s on sparse precomputed input', label)
-            else:
-                warm_model = model_factory()
-                if profile['metric'] == 'precomputed':
-                    warm_input = fit_input[:256, :256]
-                else:
-                    warm_input = fit_input[: min(len(fit_input), 256)]
-                warm_model.fit_transform(warm_input)
-                torch.cuda.synchronize()
-        for _ in range(repeats):
-            if device == 'cuda' and torch.cuda.is_available():
-                torch.cuda.synchronize()
-            model = model_factory()
-            embedding, duration, diagnostics, kl_divergence, trust, overlap, memory = run_model(
-                model,
-                fit_input,
-                quality_reference,
-            )
-            if device == 'cuda' and torch.cuda.is_available():
-                torch.cuda.synchronize()
-            durations.append(duration)
-            metrics = {
-                'embedding_shape': list(embedding.shape),
-                'diagnostics': diagnostics,
-                'memory': memory,
-                'kl_divergence': kl_divergence,
-                'trustworthiness': trust,
-                'knn_overlap': overlap,
-            }
-            embeddings_by_baseline[label] = embedding.astype(np.float32, copy=False)
-        dataset_results.append(
-            {
-                'dataset': name,
-                'input_shape': profile['input_shape'],
-                'fit_input_shape': profile.get('fit_input_shape', profile['input_shape']),
-                'metric': profile['metric'],
-                'graph_nnz': profile.get('graph_nnz'),
-                'sample_count': profile.get('sample_count'),
-                'sweep_group': profile.get('sweep_group'),
-                'baseline': label,
-                'durations': durations,
-                'median_duration': median(durations),
-                **metrics,
-            }
+        if _should_warm_up_cuda_baseline(device, label):
+            _warm_up_cuda_baseline(label, model_factory, profile, fit_input)
+        durations, metrics, embedding = _run_baseline_repeats(
+            label,
+            model_factory,
+            fit_input,
+            quality_reference,
+            repeats,
+            device,
         )
+        if embedding is not None:
+            embeddings_by_baseline[label] = embedding.astype(np.float32, copy=False)
+        dataset_results.append(_build_dataset_result_row(name, profile, label, durations, metrics))
     return dataset_results, embeddings_by_baseline
 
 

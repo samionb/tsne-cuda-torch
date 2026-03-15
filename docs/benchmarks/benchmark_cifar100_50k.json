@@ -1,0 +1,250 @@
+{
+  "library_versions": {
+    "numpy": "2.0.2",
+    "scikit-learn": "1.6.1",
+    "torch": "2.8.0+cu128"
+  },
+  "device": "cuda",
+  "datasets": [
+    {
+      "dataset": "cifar100_train_50000_graph",
+      "input_shape": [
+        50000,
+        3072
+      ],
+      "fit_input_shape": [
+        50000,
+        50000
+      ],
+      "metric": "precomputed",
+      "graph_nnz": 2400000,
+      "sample_count": null,
+      "sweep_group": null,
+      "baseline": "sklearn_barnes_hut",
+      "durations": [
+        109.72166409999998
+      ],
+      "median_duration": 109.72166409999998,
+      "embedding_shape": [
+        50000,
+        2
+      ],
+      "diagnostics": {
+        "backend": "sklearn",
+        "timings": {
+          "total": 109.72166409999998
+        },
+        "peak_cuda_memory": 0
+      },
+      "memory": {},
+      "kl_divergence": 1.7976931348623157e+308,
+      "trustworthiness": 0.8176471655328799,
+      "knn_overlap": 0.0709
+    },
+    {
+      "dataset": "cifar100_train_50000_graph",
+      "input_shape": [
+        50000,
+        3072
+      ],
+      "fit_input_shape": [
+        50000,
+        50000
+      ],
+      "metric": "precomputed",
+      "graph_nnz": 2400000,
+      "sample_count": null,
+      "sweep_group": null,
+      "baseline": "tsne_torch_fft_cpu",
+      "durations": [
+        15.096344199999976
+      ],
+      "median_duration": 15.096344199999976,
+      "embedding_shape": [
+        50000,
+        2
+      ],
+      "diagnostics": {
+        "backend": "torch_fft",
+        "timings": {
+          "perplexity_search": 0.1363134000000059,
+          "host_device_transfer": 8.929999998485982e-05,
+          "symmetrize": 0.06901279999999588,
+          "affinity_build": 0.24083459999999945,
+          "optimization": 14.84752069999999,
+          "total": 15.095184200000006,
+          "stage1": {
+            "iteration_times": [
+              0.06021224400000051,
+              0.05922370000000001,
+              0.05886150799999996,
+              0.0591898359999999,
+              0.059408249999999614
+            ],
+            "median_iteration_time": 0.05922370000000001,
+            "stopped_reason": "max_iter",
+            "objective_timing_samples": 5,
+            "objective_timings_total": {
+              "attractive_force": 0.24273189999999545,
+              "error_eval": 0.02502670000001217,
+              "gradient_finalize": 0.0005026000000327713,
+              "negative_force_combine": 0.0009096999999655964,
+              "negative_force_coords": 0.002144000000015467,
+              "negative_force_fft_convolution": 0.033789400000046044,
+              "negative_force_grid_sample": 0.0051402999999652366,
+              "negative_force_kernel_build": 0.0006675000000484488,
+              "negative_force_splat": 0.00531129999998825,
+              "negative_force_total": 0.0480243999999459
+            },
+            "objective_timings_median": {
+              "attractive_force": 0.048226499999998396,
+              "error_eval": 0.004963699999990467,
+              "gradient_finalize": 7.500000000959517e-05,
+              "negative_force_combine": 0.0001776999999947293,
+              "negative_force_coords": 0.00040760000001682783,
+              "negative_force_fft_convolution": 0.006813600000015185,
+              "negative_force_grid_sample": 0.0009571999999877789,
+              "negative_force_kernel_build": 0.00013030000002345332,
+              "negative_force_splat": 0.0010805000000004839,
+              "negative_force_total": 0.009574499999985164
+            }
+          },
+          "stage2": {
+            "iteration_times": [],
+            "median_iteration_time": 0.0,
+            "stopped_reason": "skipped"
+          },
+          "peak_cuda_memory": 0
+        },
+        "peak_cuda_memory": 0
+      },
+      "memory": {
+        "backend": "torch_fft",
+        "device": "cpu",
+        "required_bytes": 274133808,
+        "available_bytes": 6572175360,
+        "safe_budget_bytes": 5914957824,
+        "fits": true,
+        "details": {
+          "affinity_index_bytes": 96000000,
+          "edge_workspace_bytes": 76800000,
+          "optimizer_state_bytes": 1600000,
+          "grid_workspace_bytes": 8355872,
+          "input_tensor_bytes": 0
+        },
+        "metadata": {
+          "affinity_nnz_estimate": 4800000,
+          "runtime_overhead_ratio_x100": 150
+        }
+      },
+      "kl_divergence": 113.86561584472656,
+      "trustworthiness": 0.8166985386747292,
+      "knn_overlap": 0.0699
+    },
+    {
+      "dataset": "cifar100_train_50000_graph",
+      "input_shape": [
+        50000,
+        3072
+      ],
+      "fit_input_shape": [
+        50000,
+        50000
+      ],
+      "metric": "precomputed",
+      "graph_nnz": 2400000,
+      "sample_count": null,
+      "sweep_group": null,
+      "baseline": "tsne_torch_fft_cuda",
+      "durations": [
+        0.9849269000000049
+      ],
+      "median_duration": 0.9849269000000049,
+      "embedding_shape": [
+        50000,
+        2
+      ],
+      "diagnostics": {
+        "backend": "torch_fft",
+        "timings": {
+          "host_device_transfer": 0.008629500000012058,
+          "perplexity_search": 0.19923450000001708,
+          "symmetrize": 0.05691749999999729,
+          "affinity_build": 0.3011134999999854,
+          "optimization": 0.6776266999999905,
+          "total": 0.9843103999999983,
+          "stage1": {
+            "iteration_times": [
+              0.0041087479999998774,
+              0.002654302000000257,
+              0.0023151319999999485,
+              0.0021992699999998423,
+              0.00226610600000015
+            ],
+            "median_iteration_time": 0.0023151319999999485,
+            "stopped_reason": "max_iter",
+            "objective_timing_samples": 5,
+            "objective_timings_total": {
+              "attractive_force": 0.004402143955230713,
+              "error_eval": 0.0013495360165834427,
+              "gradient_finalize": 0.0002398399971425533,
+              "negative_force_combine": 0.00038464000076055525,
+              "negative_force_coords": 0.0010336639881134034,
+              "negative_force_fft_convolution": 0.002241855978965759,
+              "negative_force_grid_sample": 0.0006784000061452388,
+              "negative_force_kernel_build": 0.0006460480019450188,
+              "negative_force_splat": 0.0021427519619464873,
+              "negative_force_total": 0.007946592092514037
+            },
+            "objective_timings_median": {
+              "attractive_force": 0.0008178880214691162,
+              "error_eval": 0.00025811201333999633,
+              "gradient_finalize": 4.089599847793579e-05,
+              "negative_force_combine": 6.851200014352798e-05,
+              "negative_force_coords": 0.0002106879949569702,
+              "negative_force_fft_convolution": 0.00039616000652313235,
+              "negative_force_grid_sample": 0.00015494400262832642,
+              "negative_force_kernel_build": 0.0001258240044116974,
+              "negative_force_splat": 0.00039404800534248354,
+              "negative_force_total": 0.0015299199819564819
+            }
+          },
+          "stage2": {
+            "iteration_times": [],
+            "median_iteration_time": 0.0,
+            "stopped_reason": "skipped"
+          },
+          "peak_cuda_memory": 233647104
+        },
+        "peak_cuda_memory": 233647104
+      },
+      "memory": {
+        "backend": "torch_fft",
+        "device": "cuda",
+        "required_bytes": 274133808,
+        "available_bytes": 14943256576,
+        "safe_budget_bytes": 12701768089,
+        "fits": true,
+        "details": {
+          "affinity_index_bytes": 96000000,
+          "edge_workspace_bytes": 76800000,
+          "optimizer_state_bytes": 1600000,
+          "grid_workspace_bytes": 8355872,
+          "input_tensor_bytes": 0
+        },
+        "metadata": {
+          "affinity_nnz_estimate": 4800000,
+          "runtime_overhead_ratio_x100": 150
+        }
+      },
+      "kl_divergence": 113.86325073242188,
+      "trustworthiness": 0.8166667926429831,
+      "knn_overlap": 0.07030000000000002
+    }
+  ],
+  "charts": [
+    "C:\\Git\\tsne-cuda-torch\\docs\\benchmarks\\benchmark_cifar100_50k.png",
+    "C:\\Git\\tsne-cuda-torch\\docs\\benchmarks\\benchmark_cifar100_50k_embeddings.png"
+  ],
+  "sweeps": []
+}
